@@ -25,6 +25,18 @@ export type EdgeType =
   | 'generalization'  // Dotted arrow (multiple to one supertype)
   | 'specialization'; // Solid arrow (subtype to supertype)
 
+export type LabelDataType =
+  | 'string'
+  | 'integer'
+  | 'float'
+  | 'double'
+  | 'boolean'
+  | 'date'
+  | 'timestamp'
+  | 'char'
+  | 'text'
+  | 'decimal';
+
 export type ConstraintType =
   | 'uniqueness'      // Double-headed arrow or circle with 'u'
   | 'mandatory'       // Total role - thick dot at junction
@@ -68,6 +80,9 @@ export interface CanvasNode {
 
   // For power types and sequence types (reference to the member entity)
   memberEntityId?: string;
+
+  // For label types (data type specification)
+  dataType?: LabelDataType;
 
   // Reference to schema object
   schemaObjectId: string;
@@ -150,6 +165,11 @@ export interface CanvasState {
   isCreatingConstraint: boolean;
   constraintType?: ConstraintType;
   selectedPredicators?: string[];
+
+  // Edge reconnection state
+  isReconnectingEdge?: boolean;
+  reconnectingEdgeId?: string;
+  reconnectingEnd?: 'source' | 'target';
 }
 
 export interface Tool {

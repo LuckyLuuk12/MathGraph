@@ -19,6 +19,7 @@
 	let dragOffset: Point = { x: 0, y: 0 };
 	let isPanning = false;
 	let panStart: Point = { x: 0, y: 0 };
+	let hoveredEdgeHandle: { edgeId: string; end: 'source' | 'target' } | null = null;
 
 	let currentTool: Tool = TOOLS.SELECT;
 
@@ -74,6 +75,16 @@
 		// Draw edges
 		for (const edge of state.edges.values()) {
 			drawEdge(edge);
+		}
+
+		// Draw edge handles for selected edges
+		if (state.selectedEdges.size > 0) {
+			for (const edgeId of state.selectedEdges) {
+				const edge = state.edges.get(edgeId);
+				if (edge) {
+					drawEdgeHandles(edge);
+				}
+			}
 		}
 
 		// Draw temp edge while drawing
@@ -155,7 +166,8 @@
 		}
 
 		// Draw label
-		ctx.fillStyle = '#1f2937';
+		const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		ctx.fillStyle = isDark ? '#e5e7eb' : '#1f2937';
 		ctx.font = '14px sans-serif';
 		ctx.textAlign = 'center';
 		ctx.textBaseline = 'middle';
@@ -369,6 +381,7 @@
 		const arrowWidth = 8;
 
 		ctx.save();
+		ctx.setLineDash([]); // Ensure arrow is always solid
 		ctx.fillStyle = ctx.strokeStyle;
 		ctx.beginPath();
 		ctx.moveTo(tip.x, tip.y);
@@ -452,6 +465,54 @@
 		ctx.restore();
 	}
 
+	function drawEdgeHandles(
+		edge: typeof $canvasStore.edges extends Map<string, infer T> ? T : never
+	) {
+		const sourceNode = $canvasStore.nodes.get(edge.sourceNodeId);
+		const targetNode = $canvasStore.nodes.get(edge.targetNodeId);
+
+		if (!sourceNode || !targetNode) return;
+
+		const start = getConnectionPoint(sourceNode, edge.sourceSquareId);
+		const end = getConnectionPoint(targetNode, edge.targetSquareId);
+
+		const handleRadius = 6;
+		const isReconnecting =
+			$canvasStore.isReconnectingEdge && $canvasStore.reconnectingEdgeId === edge.id;
+
+		ctx.save();
+
+		// Draw source handle
+		const isSourceHovered =
+			hoveredEdgeHandle?.edgeId === edge.id && hoveredEdgeHandle?.end === 'source';
+		const isSourceReconnecting = isReconnecting && $canvasStore.reconnectingEnd === 'source';
+
+		ctx.fillStyle = isSourceReconnecting ? '#ef4444' : isSourceHovered ? '#3b82f6' : '#ffffff';
+		ctx.strokeStyle = isSourceReconnecting ? '#ef4444' : '#3b82f6';
+		ctx.lineWidth = 2;
+
+		ctx.beginPath();
+		ctx.arc(start.x, start.y, handleRadius, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.stroke();
+
+		// Draw target handle
+		const isTargetHovered =
+			hoveredEdgeHandle?.edgeId === edge.id && hoveredEdgeHandle?.end === 'target';
+		const isTargetReconnecting = isReconnecting && $canvasStore.reconnectingEnd === 'target';
+
+		ctx.fillStyle = isTargetReconnecting ? '#ef4444' : isTargetHovered ? '#3b82f6' : '#ffffff';
+		ctx.strokeStyle = isTargetReconnecting ? '#ef4444' : '#3b82f6';
+		ctx.lineWidth = 2;
+
+		ctx.beginPath();
+		ctx.arc(end.x, end.y, handleRadius, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.stroke();
+
+		ctx.restore();
+	}
+
 	function screenToCanvas(clientX: number, clientY: number): Point {
 		const rect = canvasElement.getBoundingClientRect();
 		const x = (clientX - rect.left - $canvasStore.pan.x) / $canvasStore.zoom;
@@ -529,6 +590,39 @@
 		return null;
 	}
 
+	function getEdgeHandleAtPoint(point: Point): { edgeId: string; end: 'source' | 'target' } | null {
+		const handleRadius = 8; // Slightly larger for click detection
+
+		// Only check handles for selected edges
+		for (const edgeId of $canvasStore.selectedEdges) {
+			const edge = $canvasStore.edges.get(edgeId);
+			if (!edge) continue;
+
+			const sourceNode = $canvasStore.nodes.get(edge.sourceNodeId);
+			const targetNode = $canvasStore.nodes.get(edge.targetNodeId);
+
+			if (!sourceNode || !targetNode) continue;
+
+			const start = getConnectionPoint(sourceNode, edge.sourceSquareId);
+			const end = getConnectionPoint(targetNode, edge.targetSquareId);
+
+			// Check source handle
+			const dxSource = point.x - start.x;
+			const dySource = point.y - start.y;
+			if (Math.sqrt(dxSource * dxSource + dySource * dySource) <= handleRadius) {
+				return { edgeId, end: 'source' };
+			}
+
+			// Check target handle
+			const dxTarget = point.x - end.x;
+			const dyTarget = point.y - end.y;
+			if (Math.sqrt(dxTarget * dxTarget + dyTarget * dyTarget) <= handleRadius) {
+				return { edgeId, end: 'target' };
+			}
+		}
+		return null;
+	}
+
 	function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Point): number {
 		const A = point.x - lineStart.x;
 		const B = point.y - lineStart.y;
@@ -562,6 +656,15 @@
 
 	function handleMouseDown(e: MouseEvent) {
 		const point = screenToCanvas(e.clientX, e.clientY);
+
+		// Check for edge handle first (for reconnection)
+		const handleInfo = getEdgeHandleAtPoint(point);
+		if (handleInfo && e.button === 0) {
+			// Start reconnecting edge
+			canvasStore.startReconnectingEdge(handleInfo.edgeId, handleInfo.end);
+			return;
+		}
+
 		const nodeId = getNodeAtPoint(point);
 		const edgeId = !nodeId ? getEdgeAtPoint(point) : null;
 
@@ -592,21 +695,53 @@
 		else if (e.button === 2) {
 			e.preventDefault();
 
-			if (currentTool.id === 'edge') {
-				// Predicate creation
+			if (
+				currentTool.id === 'predicator' ||
+				currentTool.id === 'generalization' ||
+				currentTool.id === 'specialization'
+			) {
+				// Predicate/relationship creation
 				if (nodeId) {
 					const node = $canvasStore.nodes.get(nodeId);
 					if (node) {
+						// Validate: generalization/specialization only between entity types
+						if (
+							(currentTool.id === 'generalization' || currentTool.id === 'specialization') &&
+							node.type !== 'entity' &&
+							node.type !== 'powerType' &&
+							node.type !== 'objectified'
+						) {
+							// Silently ignore - can't create subtype relationships with non-entity types
+							return;
+						}
+
 						if ($canvasStore.isDrawingEdge) {
-							// Finishing the edge - determine which square based on where the line is coming from
+							// Validate start node for generalization/specialization
 							const startNode = $canvasStore.nodes.get($canvasStore.drawingEdgeStart!.nodeId);
 							if (startNode) {
+								// Validate: both nodes must be entity types for generalization/specialization
+								if (
+									(currentTool.id === 'generalization' || currentTool.id === 'specialization') &&
+									startNode.type !== 'entity' &&
+									startNode.type !== 'powerType' &&
+									startNode.type !== 'objectified'
+								) {
+									// Cancel the edge drawing - incompatible types
+									canvasStore.cancelDrawingEdge();
+									return;
+								}
+
+								// Finishing the edge - determine which square based on where the line is coming from
 								const startCenter = getConnectionPoint(
 									startNode,
 									$canvasStore.drawingEdgeStart!.squareId
 								);
 								const squareId = getClosestSquare(node, startCenter);
-								canvasStore.finishDrawingEdge(nodeId, squareId);
+								canvasStore.finishDrawingEdge(
+									nodeId,
+									squareId,
+									currentTool.id as 'predicator' | 'generalization' | 'specialization'
+								);
 							}
 						} else {
 							// Starting the edge - determine which square based on cursor position
@@ -615,11 +750,40 @@
 						}
 					}
 				}
-			} else if (['entity', 'factType', 'labelType'].includes(currentTool.id)) {
+			} else if (currentTool.id === 'objectify') {
+				// Objectification - select a fact type to objectify
+				if (nodeId) {
+					const node = $canvasStore.nodes.get(nodeId);
+					if (node && node.type === 'factType') {
+						// Create objectified entity around this fact type
+						const centerX = node.position.x + node.size.width / 2;
+						const centerY = node.position.y + node.size.height / 2;
+						const objectifiedNode: CanvasNode = {
+							id: crypto.randomUUID(),
+							type: 'objectified',
+							shape: 'circle',
+							position: { x: centerX - 40, y: centerY - 40 },
+							size: { width: 80, height: 80 },
+							label: `Obj(${node.label})`,
+							color: '#93c5fd',
+							isSelected: false,
+							isDragging: false,
+							schemaObjectId: '',
+							objectifiedFactId: nodeId
+						};
+						canvasStore.addNode(objectifiedNode);
+					}
+				}
+			} else if (
+				['entity', 'factType', 'labelType', 'powerType', 'sequenceType'].includes(currentTool.id)
+			) {
 				// Node creation (only on empty space)
 				if (!nodeId) {
 					const snappedPoint = snapToGrid(point);
-					createNode(currentTool.id as 'entity' | 'factType' | 'labelType', snappedPoint);
+					createNode(
+						currentTool.id as 'entity' | 'factType' | 'labelType' | 'powerType' | 'sequenceType',
+						snappedPoint
+					);
 				}
 			} else {
 				// Default: pan on right-click
@@ -631,6 +795,9 @@
 
 	function handleMouseMove(e: MouseEvent) {
 		const point = screenToCanvas(e.clientX, e.clientY);
+
+		// Update hover state for edge handles
+		hoveredEdgeHandle = getEdgeHandleAtPoint(point);
 
 		if (isDragging && draggedNodeId) {
 			const rawPosition = {
@@ -646,10 +813,29 @@
 			});
 		} else if ($canvasStore.isDrawingEdge) {
 			canvasStore.updateTempEdge(point);
+		} else if ($canvasStore.isReconnectingEdge) {
+			// Show visual feedback while reconnecting
+			canvasStore.updateTempEdge(point);
 		}
 	}
 
 	function handleMouseUp(e: MouseEvent) {
+		const point = screenToCanvas(e.clientX, e.clientY);
+
+		// Handle edge reconnection
+		if ($canvasStore.isReconnectingEdge) {
+			const nodeId = getNodeAtPoint(point);
+			if (nodeId) {
+				const node = $canvasStore.nodes.get(nodeId);
+				if (node) {
+					const squareId = getClosestSquare(node, point);
+					canvasStore.finishReconnectingEdge(nodeId, squareId);
+				}
+			} else {
+				canvasStore.cancelReconnectingEdge();
+			}
+		}
+
 		isDragging = false;
 		draggedNodeId = null;
 		isPanning = false;
@@ -661,15 +847,37 @@
 		canvasStore.setZoom($canvasStore.zoom * delta);
 	}
 
-	function createNode(type: 'entity' | 'factType' | 'labelType', position: Point) {
+	function createNode(
+		type: 'entity' | 'factType' | 'labelType' | 'powerType' | 'sequenceType',
+		position: Point
+	) {
 		const node: CanvasNode = {
 			id: crypto.randomUUID(),
-			type: type === 'entity' ? 'entity' : type === 'factType' ? 'factType' : 'labelType',
-			shape: type === 'entity' ? 'circle' : type === 'factType' ? 'square' : 'diamond',
+			type: type,
+			shape:
+				type === 'entity' || type === 'powerType' || type === 'sequenceType'
+					? 'circle'
+					: type === 'factType'
+						? 'square'
+						: 'diamond',
 			position,
 			size: { width: 80, height: 80 },
-			label: type === 'entity' ? 'Entity' : type === 'factType' ? 'FactType' : 'LabelType',
-			color: type === 'entity' ? '#93c5fd' : type === 'factType' ? '#fde68a' : '#d8b4fe',
+			label:
+				type === 'entity'
+					? 'Entity'
+					: type === 'factType'
+						? 'FactType'
+						: type === 'labelType'
+							? 'LabelType'
+							: type === 'powerType'
+								? 'PowerType'
+								: 'SeqType',
+			color:
+				type === 'entity' || type === 'powerType' || type === 'sequenceType'
+					? '#93c5fd'
+					: type === 'factType'
+						? '#fde68a'
+						: '#d8b4fe',
 			isSelected: false,
 			isDragging: false,
 			schemaObjectId: '',

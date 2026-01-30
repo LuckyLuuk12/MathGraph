@@ -42,6 +42,7 @@ function loadFromLocalStorage(): ProjectStoreState {
               ...p.canvasState,
               nodes: new Map(p.canvasState.nodes),
               edges: new Map(p.canvasState.edges),
+              constraints: new Map(p.canvasState.constraints || []),
               selectedNodes: new Set(p.canvasState.selectedNodes || []),
               selectedEdges: new Set(p.canvasState.selectedEdges || [])
             }
@@ -68,6 +69,7 @@ function saveToLocalStorage(state: ProjectStoreState) {
         ...project.canvasState,
         nodes: Array.from(project.canvasState.nodes.entries()),
         edges: Array.from(project.canvasState.edges.entries()),
+        constraints: Array.from(project.canvasState.constraints?.entries() || []),
         selectedNodes: Array.from(project.canvasState.selectedNodes),
         selectedEdges: Array.from(project.canvasState.selectedEdges)
       }
@@ -183,6 +185,42 @@ function createProjectStore() {
       const state = get({ subscribe });
       return Array.from(state.projects.values())
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    },
+
+    exportProjectAsJSON: (id: string): string => {
+      const state = get({ subscribe });
+      const project = state.projects.get(id);
+      if (!project) {
+        throw new Error('Project not found');
+      }
+      return JSON.stringify(project, null, 2);
+    },
+
+    importProjectFromJSON: (jsonString: string): string => {
+      try {
+        const project = JSON.parse(jsonString) as Project;
+        // Generate new ID to avoid conflicts
+        const newId = crypto.randomUUID();
+        const now = new Date().toISOString();
+
+        const importedProject: Project = {
+          ...project,
+          id: newId,
+          name: `${project.name} (imported)`,
+          createdAt: now,
+          updatedAt: now
+        };
+
+        update(state => {
+          state.projects.set(newId, importedProject);
+          saveToLocalStorage(state);
+          return state;
+        });
+
+        return newId;
+      } catch (error) {
+        throw new Error('Failed to import project: Invalid JSON');
+      }
     }
   };
 }

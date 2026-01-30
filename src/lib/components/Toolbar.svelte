@@ -21,7 +21,8 @@
 	<!-- Structure Tools -->
 	<div class="tool-category">
 		<button class="category-toggle" onclick={() => (showStructure = !showStructure)}>
-			{showStructure ? '▼' : '▶'} Structure
+			<i class={showStructure ? 'fas fa-chevron-down' : 'fas fa-chevron-right'}></i>
+			Structure
 		</button>
 		{#if showStructure}
 			<div class="tool-group">
@@ -105,7 +106,8 @@
 	<!-- Subtype Tools -->
 	<div class="tool-category">
 		<button class="category-toggle" onclick={() => (showSubtype = !showSubtype)}>
-			{showSubtype ? '▼' : '▶'} Subtype
+			<i class={showSubtype ? 'fas fa-chevron-down' : 'fas fa-chevron-right'}></i>
+			Subtype
 		</button>
 		{#if showSubtype}
 			<div class="tool-group">
@@ -135,7 +137,8 @@
 	<!-- Constraint Tools -->
 	<div class="tool-category">
 		<button class="category-toggle" onclick={() => (showConstraint = !showConstraint)}>
-			{showConstraint ? '▼' : '▶'} Constraints
+			<i class={showConstraint ? 'fas fa-chevron-down' : 'fas fa-chevron-right'}></i>
+			Constraints
 		</button>
 		{#if showConstraint}
 			<div class="tool-group">

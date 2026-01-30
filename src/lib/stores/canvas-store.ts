@@ -45,6 +45,38 @@ function createCanvasStore() {
   const maxHistory = 50;
   let clipboard: Clipboard = { nodes: [], edges: [] };
 
+  // Naming counters for unique sequential names
+  let nameCounters = {
+    entity: 0,
+    factType: 0,
+    labelType: 0,
+    powerType: 0,
+    sequenceType: 0,
+    objectified: 0,
+    predicator: 0,
+    generalization: 0,
+    specialization: 0
+  };
+
+  function getNextName(type: keyof typeof nameCounters): string {
+    nameCounters[type]++;
+
+    // Short names for edge types
+    if (type === 'predicator') return `P${nameCounters[type]}`;
+    if (type === 'generalization') return `G${nameCounters[type]}`;
+    if (type === 'specialization') return `S${nameCounters[type]}`;
+
+    // Full names for node types
+    if (type === 'entity') return `Entity ${nameCounters[type]}`;
+    if (type === 'factType') return `Fact ${nameCounters[type]}`;
+    if (type === 'labelType') return `Label ${nameCounters[type]}`;
+    if (type === 'powerType') return `Power ${nameCounters[type]}`;
+    if (type === 'sequenceType') return `Seq ${nameCounters[type]}`;
+    if (type === 'objectified') return `Obj ${nameCounters[type]}`;
+
+    return type;
+  }
+
   function saveHistory(state: CanvasState) {
     // Remove any redo history
     history = history.slice(0, historyIndex + 1);
@@ -91,6 +123,18 @@ function createCanvasStore() {
 
     addNode: (node: CanvasNode) => {
       update(state => {
+        // Generate unique name if using default name
+        if (node.label === 'Entity' || node.label === 'FactType' || node.label === 'LabelType' ||
+          node.label === 'PowerType' || node.label === 'SeqType' || node.label.startsWith('Obj(')) {
+          if (node.type === 'objectified') {
+            // Keep the Obj(FactType) format but with counter
+            const factNode = state.nodes.get(node.objectifiedFactId || '');
+            node.label = `Obj(${factNode?.label || getNextName('objectified')})`;
+          } else {
+            node.label = getNextName(node.type as keyof typeof nameCounters);
+          }
+        }
+
         state.nodes.set(node.id, node);
         saveHistory(state);
         return state;
@@ -199,7 +243,7 @@ function createCanvasStore() {
       }));
     },
 
-    finishDrawingEdge: (targetNodeId: string, targetSquareId?: string) => {
+    finishDrawingEdge: (targetNodeId: string, targetSquareId?: string, edgeType: 'predicator' | 'generalization' | 'specialization' = 'predicator') => {
       let edgeCreated = false;
 
       update(state => {
@@ -211,11 +255,11 @@ function createCanvasStore() {
             targetNodeId,
             sourceSquareId: state.drawingEdgeStart.squareId,
             targetSquareId,
-            label: '',
-            color: '#6366f1',
+            label: getNextName(edgeType),
+            color: edgeType === 'predicator' ? '#6366f1' : edgeType === 'generalization' ? '#10b981' : '#f59e0b',
             isSelected: false,
             predicatorId: '', // Will be set when connected to schema
-            type: 'predicator'
+            type: edgeType
           };
           state.edges.set(edgeId, edge);
           edgeCreated = true;
@@ -322,6 +366,110 @@ function createCanvasStore() {
         saveHistory(state);
         return state;
       });
+    },
+
+    updateEdgesAfterArityChange: (nodeId: string, removedSquareIds: Set<string>, fallbackSquareId: string) => {
+      update(state => {
+        // Update edges connected to removed squares
+        for (const [edgeId, edge] of state.edges) {
+          let updated = false;
+
+          if (edge.sourceNodeId === nodeId && edge.sourceSquareId && removedSquareIds.has(edge.sourceSquareId)) {
+            edge.sourceSquareId = fallbackSquareId;
+            updated = true;
+          }
+
+          if (edge.targetNodeId === nodeId && edge.targetSquareId && removedSquareIds.has(edge.targetSquareId)) {
+            edge.targetSquareId = fallbackSquareId;
+            updated = true;
+          }
+
+          if (updated) {
+            state.edges.set(edgeId, edge);
+          }
+        }
+        return state;
+      });
+    },
+
+    reconnectEdge: (edgeId: string, end: 'source' | 'target', newNodeId: string, newSquareId?: string) => {
+      update((state) => {
+        const edge = state.edges.get(edgeId);
+        if (!edge) return state;
+
+        const node = state.nodes.get(newNodeId);
+        if (!node) return state;
+
+        // For fact types, use specified square or first square
+        const squareId = newSquareId || (node.squares?.[0]?.id || undefined);
+
+        const updatedEdge = { ...edge };
+        if (end === 'source') {
+          updatedEdge.sourceNodeId = newNodeId;
+          updatedEdge.sourceSquareId = squareId;
+        } else {
+          updatedEdge.targetNodeId = newNodeId;
+          updatedEdge.targetSquareId = squareId;
+        }
+
+        return {
+          ...state,
+          edges: new Map(state.edges).set(edgeId, updatedEdge)
+        };
+      });
+    },
+
+    startReconnectingEdge: (edgeId: string, end: 'source' | 'target') => {
+      update((state) => ({
+        ...state,
+        isReconnectingEdge: true,
+        reconnectingEdgeId: edgeId,
+        reconnectingEnd: end,
+        selectedNodes: new Set(),
+        selectedEdges: new Set()
+      }));
+    },
+
+    finishReconnectingEdge: (newNodeId: string, newSquareId?: string) => {
+      update((state) => {
+        if (!state.isReconnectingEdge || !state.reconnectingEdgeId) return state;
+
+        const edge = state.edges.get(state.reconnectingEdgeId);
+        if (!edge) return state;
+
+        const node = state.nodes.get(newNodeId);
+        if (!node) return state;
+
+        const squareId = newSquareId || (node.squares?.[0]?.id || undefined);
+        const updatedEdge = { ...edge };
+
+        if (state.reconnectingEnd === 'source') {
+          updatedEdge.sourceNodeId = newNodeId;
+          updatedEdge.sourceSquareId = squareId;
+        } else {
+          updatedEdge.targetNodeId = newNodeId;
+          updatedEdge.targetSquareId = squareId;
+        }
+
+        return {
+          ...state,
+          edges: new Map(state.edges).set(state.reconnectingEdgeId, updatedEdge),
+          isReconnectingEdge: false,
+          reconnectingEdgeId: undefined,
+          reconnectingEnd: undefined,
+          tempEdge: undefined
+        };
+      });
+    },
+
+    cancelReconnectingEdge: () => {
+      update((state) => ({
+        ...state,
+        isReconnectingEdge: false,
+        reconnectingEdgeId: undefined,
+        reconnectingEnd: undefined,
+        tempEdge: undefined
+      }));
     },
 
     // ============================================================================
@@ -545,6 +693,27 @@ function createCanvasStore() {
     getSelectedConstraintIds: (): string[] => {
       const state = get({ subscribe });
       return Array.from(state.selectedConstraints);
+    },
+
+    // ============================================================================
+    // STATE MANAGEMENT
+    // ============================================================================
+
+    loadState: (newState: CanvasState) => {
+      set(newState);
+      // Reset history after loading
+      history = [{
+        nodes: cloneMap(newState.nodes),
+        edges: cloneMap(newState.edges),
+        constraints: cloneMap(newState.constraints || new Map())
+      }];
+      historyIndex = 0;
+    },
+
+    reset: () => {
+      set(createInitialCanvasState());
+      history = [];
+      historyIndex = -1;
     }
   };
 }
