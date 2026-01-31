@@ -7,6 +7,7 @@
 // Core modules
 export { ConstraintValidator, createNoEmptyConstraint } from './validation';
 export { SQLGenerator, exportToSQL } from './sql-generator';
+export { SchemaConverter } from './schema-converter';
 export {
   graphStore,
   validationStore,

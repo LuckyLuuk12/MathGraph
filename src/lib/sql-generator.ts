@@ -12,6 +12,22 @@
  * - Enumerations → CHECK Constraints
  */
 
+import type {
+  InformationSchema,
+  Entity,
+  FactType,
+  Predicator,
+  ObjectType,
+  LabelType,
+  UniqueConstraint,
+  SQLSchema,
+  SQLTable,
+  SQLColumn,
+  SQLForeignKey,
+  SQLCheckConstraint,
+  SQLIndex,
+  Omega
+} from './types';
 import {
   SQLDialect,
   DataType,
@@ -157,7 +173,7 @@ export class SQLGenerator {
     if (!primaryIdentifier || primaryIdentifier.predicatorIds.length === 0) {
       columns.unshift({
         name: 'id',
-        dataType: this.dialect === SQLDialect.PostgreSQL ? 'SERIAL' : 'INT AUTO_INCREMENT',
+        dataType: this.getAutoIncrementColumn(),
         isNullable: false,
         isPrimaryKey: true,
         isUnique: true
@@ -234,7 +250,7 @@ export class SQLGenerator {
     // Add ID column (objectified facts become entities)
     columns.push({
       name: 'id',
-      dataType: this.dialect === SQLDialect.PostgreSQL ? 'SERIAL' : 'INT AUTO_INCREMENT',
+      dataType: this.getAutoIncrementColumn(),
       isNullable: false,
       isPrimaryKey: true,
       isUnique: true
@@ -518,6 +534,24 @@ export class SQLGenerator {
    */
   private getSQLType(dataType: DataType): string {
     return SQL_TYPE_MAPPING[this.dialect][dataType];
+  }
+
+  /**
+   * Get auto-increment column definition for the current dialect
+   */
+  private getAutoIncrementColumn(): string {
+    switch (this.dialect) {
+      case SQLDialect.PostgreSQL:
+        return 'SERIAL';
+      case SQLDialect.MySQL:
+        return 'INT AUTO_INCREMENT';
+      case SQLDialect.SQLite:
+        return 'INTEGER'; // SQLite auto-increments INTEGER PRIMARY KEY automatically
+      case SQLDialect.SQLServer:
+        return 'INT IDENTITY(1,1)';
+      default:
+        return 'INTEGER';
+    }
   }
 
   /**

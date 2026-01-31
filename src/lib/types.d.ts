@@ -13,7 +13,7 @@
  * Ω represents the universal set - the domain of all possible instances
  * In practice, this is a union of all entity instances in the system
  */
-type Omega = string | number | boolean | Date | null;
+export type Omega = string | number | boolean | Date | null;
 
 // ============================================================================
 // PRIMARY SETS: P, O, E, F, G, S, L
@@ -23,7 +23,7 @@ type Omega = string | number | boolean | Date | null;
  * P: Predicators (Roles in relationships)
  * A predicator represents a position/role within a fact type
  */
-interface Predicator {
+export interface Predicator {
   id: string;
   name: string;
   factTypeId: string; // Reference to parent fact type
@@ -36,7 +36,7 @@ interface Predicator {
  * O: Objects (Entity Types, Value Types)
  * Objects are the fundamental building blocks that can participate in facts
  */
-interface ObjectType {
+export interface ObjectType {
   id: string;
   name: string;
   kind: 'Entity' | 'Value' | 'Power' | 'Sequence' | 'Label';
@@ -49,7 +49,7 @@ interface ObjectType {
  * E: Entities (Subset of O)
  * Entity types that have independent existence
  */
-interface Entity extends ObjectType {
+export interface Entity extends ObjectType {
   kind: 'Entity';
   identifiers: UniqueConstraint[]; // At least one uniqueness constraint required
 }
@@ -58,7 +58,7 @@ interface Entity extends ObjectType {
  * F: Fact Types
  * Represent relationships between objects through their predicators
  */
-interface FactType {
+export interface FactType {
   id: string;
   name: string;
   predicators: string[]; // IDs of predicators (ordered)
@@ -72,7 +72,7 @@ interface FactType {
  * G: Power Types
  * Represent collections/sets of entities
  */
-interface PowerType extends ObjectType {
+export interface PowerType extends ObjectType {
   kind: 'Power';
   elementTypeId: string; // The entity type this is a power type of
 }
@@ -81,7 +81,7 @@ interface PowerType extends ObjectType {
  * S: Sequence Types
  * Represent ordered collections
  */
-interface SequenceType extends ObjectType {
+export interface SequenceType extends ObjectType {
   kind: 'Sequence';
   elementTypeId: string; // The object type this is a sequence of
   isOrdered: boolean; // Always true for sequences
@@ -92,7 +92,7 @@ interface SequenceType extends ObjectType {
  * L: Label Types (Value Types with enumeration)
  * Constrained value domains (enums, bounded integers, etc.)
  */
-interface LabelType extends ObjectType {
+export interface LabelType extends ObjectType {
   kind: 'Label';
   dataType: 'String' | 'Integer' | 'Decimal' | 'Boolean' | 'Date' | 'DateTime';
   enumeration?: Omega[]; // Restricted domain values
@@ -110,14 +110,14 @@ interface LabelType extends ObjectType {
  * Maps each predicator to its object type
  * This is represented by the `objectId` field in Predicator
  */
-type BaseFunction = (predicator: Predicator) => ObjectType;
+export type BaseFunction = (predicator: Predicator) => ObjectType;
 
 /**
  * Pop: O → P(Ω)
  * Population function - maps objects to their set of instances
  * P(Ω) is the power set of Omega
  */
-interface Population {
+export interface Population {
   objectId: string;
   instances: Set<Omega>;
 }
@@ -126,7 +126,7 @@ interface Population {
  * Fact population: instances of fact types
  * Each fact is a tuple of values corresponding to the predicators
  */
-interface FactPopulation {
+export interface FactPopulation {
   factTypeId: string;
   tuples: Array<Map<string, Omega>>; // Map predicatorId -> value
 }
@@ -139,7 +139,7 @@ interface FactPopulation {
  * Uniqueness Constraint
  * Ensures combinations of predicators form unique keys
  */
-interface UniqueConstraint {
+export interface UniqueConstraint {
   id: string;
   name: string;
   predicatorIds: string[]; // Single or composite
@@ -151,7 +151,7 @@ interface UniqueConstraint {
  * Total Role Constraint (Mandatory)
  * Every instance of an object must participate in this role
  */
-interface TotalRoleConstraint {
+export interface TotalRoleConstraint {
   id: string;
   name: string;
   predicatorId: string; // The role that is mandatory
@@ -162,7 +162,7 @@ interface TotalRoleConstraint {
  * Set Constraint (Subset, Equality, Exclusion)
  * Constraints between populations of predicators
  */
-interface SetConstraint {
+export interface SetConstraint {
   id: string;
   name: string;
   type: 'Subset' | 'Equality' | 'Exclusion';
@@ -174,7 +174,7 @@ interface SetConstraint {
  * Cardinality Constraint
  * Restricts how many times an instance can participate
  */
-interface CardinalityConstraint {
+export interface CardinalityConstraint {
   id: string;
   name: string;
   predicatorId: string;
@@ -187,7 +187,7 @@ interface CardinalityConstraint {
  * Restricts count of tuples for a fact type
  * frequency(σ, n, m): fact type σ has between n and m instances
  */
-interface FrequencyConstraint {
+export interface FrequencyConstraint {
   id: string;
   name: string;
   factTypeId: string;
@@ -199,7 +199,7 @@ interface FrequencyConstraint {
  * Enumeration Constraint (for Label Types)
  * Restricts label type to specific domain
  */
-interface EnumerationConstraint {
+export interface EnumerationConstraint {
   id: string;
   name: string;
   labelTypeId: string;
@@ -210,7 +210,7 @@ interface EnumerationConstraint {
  * Custom Constraint (Extensible)
  * Allows user-defined constraint functions like no_empty(e)
  */
-interface CustomConstraint {
+export interface CustomConstraint {
   id: string;
   name: string;
   description: string;
@@ -226,7 +226,7 @@ interface CustomConstraint {
  * Complete Information Schema
  * Represents the entire model structure
  */
-interface InformationSchema {
+export interface InformationSchema {
   id: string;
   name: string;
   version: string;
@@ -253,7 +253,7 @@ interface InformationSchema {
 /**
  * Schema Population (instances)
  */
-interface SchemaPopulation {
+export interface SchemaPopulation {
   schemaId: string;
   objectPopulations: Map<string, Population>;
   factPopulations: Map<string, FactPopulation>;
@@ -262,7 +262,7 @@ interface SchemaPopulation {
 /**
  * Validation Result
  */
-interface ValidationResult {
+export interface ValidationResult {
   isValid: boolean;
   violations: ConstraintViolation[];
 }
@@ -270,7 +270,7 @@ interface ValidationResult {
 /**
  * Constraint Violation
  */
-interface ConstraintViolation {
+export interface ConstraintViolation {
   constraintId: string;
   constraintType: string;
   severity: 'Error' | 'Warning';
@@ -286,7 +286,7 @@ interface ConstraintViolation {
 /**
  * SQL Table Definition (mapped from Entity or Objectified Fact Type)
  */
-interface SQLTable {
+export interface SQLTable {
   name: string;
   columns: SQLColumn[];
   primaryKey?: string[];
@@ -298,7 +298,7 @@ interface SQLTable {
 /**
  * SQL Column Definition
  */
-interface SQLColumn {
+export interface SQLColumn {
   name: string;
   dataType: string; // SQL data type (varies by dialect)
   isNullable: boolean;
@@ -314,7 +314,7 @@ interface SQLColumn {
 /**
  * SQL Foreign Key
  */
-interface SQLForeignKey {
+export interface SQLForeignKey {
   name: string;
   columns: string[];
   referencedTable: string;
@@ -326,7 +326,7 @@ interface SQLForeignKey {
 /**
  * SQL Check Constraint
  */
-interface SQLCheckConstraint {
+export interface SQLCheckConstraint {
   name: string;
   expression: string;
 }
@@ -334,7 +334,7 @@ interface SQLCheckConstraint {
 /**
  * Complete SQL Schema
  */
-interface SQLSchema {
+export interface SQLSchema {
   dialect: 'PostgreSQL' | 'MySQL' | 'SQLite' | 'SQL Server';
   tables: SQLTable[];
   views?: string[];
@@ -344,7 +344,7 @@ interface SQLSchema {
 /**
  * SQL Index
  */
-interface SQLIndex {
+export interface SQLIndex {
   name: string;
   tableName: string;
   columns: string[];
@@ -358,7 +358,7 @@ interface SQLIndex {
 /**
  * Graph Node (represents Objects)
  */
-interface GraphNode {
+export interface GraphNode {
   id: string;
   type: 'Entity' | 'Value' | 'Power' | 'Sequence' | 'Label' | 'ObjectifiedFact';
   data: ObjectType;
@@ -369,7 +369,7 @@ interface GraphNode {
 /**
  * Graph Edge (represents Predicators/Relationships)
  */
-interface GraphEdge {
+export interface GraphEdge {
   id: string;
   source: string; // Node ID
   target: string; // Node ID
@@ -382,7 +382,7 @@ interface GraphEdge {
 /**
  * Graph State
  */
-interface GraphState {
+export interface GraphState {
   nodes: Map<string, GraphNode>;
   edges: Map<string, GraphEdge>;
   selectedNodes: Set<string>;
