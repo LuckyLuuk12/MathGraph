@@ -7,6 +7,7 @@
 	import { canvasStore } from '$lib/stores/canvas-store';
 	import type { Project } from '$lib/stores/project-store';
 	import type { SQLTable } from '$lib/types';
+	import type { Point } from '$lib/canvas-types';
 	import { SQLDialect } from '$lib/constants';
 	import { SQLGenerator } from '$lib/sql-generator';
 	import { SchemaConverter } from '$lib/schema-converter';
@@ -22,6 +23,13 @@
 	let isGenerating = $state(false);
 	let sqlKey = $state(0); // Key to force re-render
 	let lastDialect = $state<SQLDialect | null>(null); // Track last dialect to prevent loops
+
+	// Image export settings
+	let imageExportSettings = $state({
+		showGrid: false,
+		background: 'white' as 'white' | 'transparent',
+		monochrome: false
+	});
 
 	// Schema statistics
 	let schemaStats = $state({
@@ -177,6 +185,312 @@
 		a.click();
 		URL.revokeObjectURL(url);
 	}
+
+	function exportAsImage() {
+		// Create an off-screen canvas for export
+		const exportCanvas = document.createElement('canvas');
+		const exportCtx = exportCanvas.getContext('2d')!;
+
+		// Calculate bounding box of all nodes
+		let minX = Infinity,
+			minY = Infinity,
+			maxX = -Infinity,
+			maxY = -Infinity;
+
+		for (const node of $canvasStore.nodes.values()) {
+			minX = Math.min(minX, node.position.x);
+			minY = Math.min(minY, node.position.y);
+			maxX = Math.max(maxX, node.position.x + node.size.width);
+			maxY = Math.max(maxY, node.position.y + node.size.height);
+		}
+
+		// Add padding
+		const padding = 50;
+		minX -= padding;
+		minY -= padding;
+		maxX += padding;
+		maxY += padding;
+
+		const canvasWidth = maxX - minX;
+		const canvasHeight = maxY - minY;
+
+		// Set canvas size
+		exportCanvas.width = canvasWidth;
+		exportCanvas.height = canvasHeight;
+
+		// Set background
+		if (imageExportSettings.background === 'white') {
+			exportCtx.fillStyle = '#ffffff';
+			exportCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+		}
+
+		// Apply translation to center the content
+		exportCtx.save();
+		exportCtx.translate(-minX, -minY);
+
+		// Draw grid if enabled
+		if (imageExportSettings.showGrid) {
+			drawGridToContext(exportCtx, minX, minY, maxX, maxY);
+		}
+
+		// Draw edges
+		for (const edge of $canvasStore.edges.values()) {
+			drawEdgeToContext(exportCtx, edge);
+		}
+
+		// Draw nodes
+		for (const node of $canvasStore.nodes.values()) {
+			drawNodeToContext(exportCtx, node);
+		}
+
+		exportCtx.restore();
+
+		// Download the image
+		exportCanvas.toBlob((blob) => {
+			if (blob) {
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = `${projectName.replace(/\s+/g, '_')}_model.png`;
+				a.click();
+				URL.revokeObjectURL(url);
+			}
+		});
+	}
+
+	function drawGridToContext(
+		ctx: CanvasRenderingContext2D,
+		minX: number,
+		minY: number,
+		maxX: number,
+		maxY: number
+	) {
+		const gridSize = 20;
+		const color = imageExportSettings.monochrome ? '#e0e0e0' : '#e5e7eb';
+
+		ctx.strokeStyle = color;
+		ctx.lineWidth = 0.5;
+
+		// Vertical lines
+		for (let x = Math.floor(minX / gridSize) * gridSize; x <= maxX; x += gridSize) {
+			ctx.beginPath();
+			ctx.moveTo(x, minY);
+			ctx.lineTo(x, maxY);
+			ctx.stroke();
+		}
+
+		// Horizontal lines
+		for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
+			ctx.beginPath();
+			ctx.moveTo(minX, y);
+			ctx.lineTo(maxX, y);
+			ctx.stroke();
+		}
+	}
+
+	function drawNodeToContext(ctx: CanvasRenderingContext2D, node: any) {
+		ctx.save();
+
+		// Apply monochrome if enabled
+		const nodeColor = imageExportSettings.monochrome ? '#d1d5db' : node.color;
+
+		ctx.strokeStyle = '#1f2937';
+		ctx.lineWidth = 2;
+		ctx.fillStyle = nodeColor;
+
+		// Draw based on node type
+		if (node.type === 'factType' && node.arity && node.arity > 1) {
+			// N-ary fact type
+			const squareSize = 40;
+			const spacing = 0;
+			for (let i = 0; i < node.arity; i++) {
+				const x = node.position.x + i * (squareSize + spacing);
+				const y = node.position.y;
+				ctx.fillRect(x, y, squareSize, squareSize);
+				ctx.strokeRect(x, y, squareSize, squareSize);
+			}
+		} else if (node.type === 'powerType') {
+			// Double circle
+			const centerX = node.position.x + node.size.width / 2;
+			const centerY = node.position.y + node.size.height / 2;
+			const radius = Math.min(node.size.width, node.size.height) / 2;
+			const innerRadius = radius - 5;
+
+			ctx.beginPath();
+			ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.stroke();
+
+			ctx.beginPath();
+			ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
+			ctx.stroke();
+		} else if (node.type === 'sequenceType') {
+			// Rectangle around entity
+			const centerX = node.position.x + node.size.width / 2;
+			const centerY = node.position.y + node.size.height / 2;
+			const radius = Math.min(node.size.width, node.size.height) / 2;
+			const rectPadding = 10;
+
+			ctx.strokeRect(
+				node.position.x - rectPadding,
+				node.position.y - rectPadding,
+				node.size.width + rectPadding * 2,
+				node.size.height + rectPadding * 2
+			);
+
+			ctx.beginPath();
+			ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.stroke();
+		} else if (node.shape === 'circle') {
+			// Circle (entity)
+			const centerX = node.position.x + node.size.width / 2;
+			const centerY = node.position.y + node.size.height / 2;
+			const radius = Math.min(node.size.width, node.size.height) / 2;
+
+			ctx.beginPath();
+			ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.stroke();
+		} else if (node.shape === 'square') {
+			// Square (fact type)
+			ctx.fillRect(node.position.x, node.position.y, node.size.width, node.size.height);
+			ctx.strokeRect(node.position.x, node.position.y, node.size.width, node.size.height);
+		} else if (node.shape === 'diamond') {
+			// Diamond (label type)
+			const centerX = node.position.x + node.size.width / 2;
+			const centerY = node.position.y + node.size.height / 2;
+			const halfWidth = node.size.width / 2;
+			const halfHeight = node.size.height / 2;
+
+			ctx.beginPath();
+			ctx.moveTo(centerX, centerY - halfHeight);
+			ctx.lineTo(centerX + halfWidth, centerY);
+			ctx.lineTo(centerX, centerY + halfHeight);
+			ctx.lineTo(centerX - halfWidth, centerY);
+			ctx.closePath();
+			ctx.fill();
+			ctx.stroke();
+		}
+
+		// Draw label
+		ctx.fillStyle = '#1f2937';
+		ctx.font = '14px sans-serif';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(
+			node.label,
+			node.position.x + node.size.width / 2,
+			node.position.y + node.size.height + 20
+		);
+
+		ctx.restore();
+	}
+
+	function drawEdgeToContext(ctx: CanvasRenderingContext2D, edge: any) {
+		const sourceNode = $canvasStore.nodes.get(edge.sourceNodeId);
+		const targetNode = $canvasStore.nodes.get(edge.targetNodeId);
+
+		if (!sourceNode || !targetNode) return;
+
+		ctx.save();
+
+		const edgeColor = imageExportSettings.monochrome ? '#6b7280' : edge.color;
+		ctx.strokeStyle = edgeColor;
+		ctx.lineWidth = 2;
+
+		// Get connection points
+		const start = getNodeCenter(sourceNode);
+		const end = getNodeCenter(targetNode);
+
+		// Set line style based on edge type
+		if (edge.type === 'generalization') {
+			ctx.setLineDash([5, 5]);
+		} else {
+			ctx.setLineDash([]);
+		}
+
+		// Draw line
+		ctx.beginPath();
+		ctx.moveTo(start.x, start.y);
+		ctx.lineTo(end.x, end.y);
+		ctx.stroke();
+
+		// Draw arrowhead for generalization/specialization
+		if (edge.type === 'generalization' || edge.type === 'specialization') {
+			drawArrowheadToContext(ctx, end, start);
+		}
+
+		ctx.setLineDash([]);
+
+		// Draw label
+		if (edge.label) {
+			const midX = (start.x + end.x) / 2;
+			const midY = (start.y + end.y) / 2;
+
+			ctx.font = '12px sans-serif';
+			const metrics = ctx.measureText(edge.label);
+			const textWidth = Math.min(metrics.width, 150);
+			const padding = 4;
+			const bgHeight = 18;
+
+			const bgColor =
+				imageExportSettings.background === 'transparent'
+					? 'rgba(255, 255, 255, 0.9)'
+					: 'rgba(255, 255, 255, 0.9)';
+
+			ctx.fillStyle = bgColor;
+			ctx.fillRect(
+				midX - textWidth / 2 - padding,
+				midY - bgHeight / 2,
+				textWidth + padding * 2,
+				bgHeight
+			);
+
+			ctx.fillStyle = '#1f2937';
+			ctx.textAlign = 'center';
+			ctx.textBaseline = 'middle';
+			let displayText = edge.label;
+			if (metrics.width > 150) {
+				while (ctx.measureText(displayText + '...').width > 150 && displayText.length > 0) {
+					displayText = displayText.slice(0, -1);
+				}
+				displayText += '...';
+			}
+			ctx.fillText(displayText, midX, midY);
+		}
+
+		ctx.restore();
+	}
+
+	function drawArrowheadToContext(ctx: CanvasRenderingContext2D, tip: Point, base: Point) {
+		const angle = Math.atan2(tip.y - base.y, tip.x - base.x);
+		const arrowLength = 15;
+
+		ctx.save();
+		ctx.setLineDash([]);
+		ctx.fillStyle = ctx.strokeStyle;
+		ctx.beginPath();
+		ctx.moveTo(tip.x, tip.y);
+		ctx.lineTo(
+			tip.x - arrowLength * Math.cos(angle - Math.PI / 6),
+			tip.y - arrowLength * Math.sin(angle - Math.PI / 6)
+		);
+		ctx.lineTo(
+			tip.x - arrowLength * Math.cos(angle + Math.PI / 6),
+			tip.y - arrowLength * Math.sin(angle + Math.PI / 6)
+		);
+		ctx.closePath();
+		ctx.fill();
+		ctx.restore();
+	}
+
+	function getNodeCenter(node: any): Point {
+		return {
+			x: node.position.x + node.size.width / 2,
+			y: node.position.y + node.size.height / 2
+		};
+	}
 </script>
 
 <LoadingScreen {isLoading} />
@@ -184,7 +498,7 @@
 <div class="export-page">
 	<div class="header">
 		<a href="/projects" class="back-btn"> ← Projects </a>
-		<h1>🗄️ Export SQL Schema</h1>
+		<h1>� Export Model</h1>
 		<div class="project-info">
 			<span class="project-name">{projectName}</span>
 		</div>
@@ -233,7 +547,36 @@
 			</div>
 
 			<div class="section">
+				<h3>Image Export Settings</h3>
+				<div class="settings-group">
+					<label class="checkbox-label">
+						<input type="checkbox" bind:checked={imageExportSettings.showGrid} />
+						<span>Show Grid</span>
+					</label>
+					<label class="checkbox-label">
+						<input type="checkbox" bind:checked={imageExportSettings.monochrome} />
+						<span>Monochrome</span>
+					</label>
+					<div class="radio-group">
+						<span class="radio-label">Background:</span>
+						<label class="radio-option">
+							<input type="radio" bind:group={imageExportSettings.background} value="white" />
+							<span>White</span>
+						</label>
+						<label class="radio-option">
+							<input type="radio" bind:group={imageExportSettings.background} value="transparent" />
+							<span>Transparent</span>
+						</label>
+					</div>
+				</div>
+			</div>
+
+			<div class="section">
 				<h3>Export Actions</h3>
+				<button class="action-btn primary" onclick={exportAsImage}>
+					<span class="icon">🖼️</span>
+					Download Image
+				</button>
 				<button class="action-btn primary" onclick={downloadSQL}>
 					<span class="icon">⬇</span>
 					Download SQL
@@ -420,6 +763,68 @@
 
 	.icon {
 		font-size: 1rem;
+	}
+
+	.settings-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.875rem;
+		color: var(--text-primary);
+		padding: 0.5rem;
+		background: var(--bg-primary);
+		border-radius: 4px;
+		transition: background 0.2s;
+	}
+
+	.checkbox-label:hover {
+		background: var(--hover-bg);
+	}
+
+	.checkbox-label input[type='checkbox'] {
+		cursor: pointer;
+		width: 16px;
+		height: 16px;
+	}
+
+	.radio-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.5rem;
+		background: var(--bg-primary);
+		border-radius: 4px;
+	}
+
+	.radio-label {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin-bottom: 0.25rem;
+	}
+
+	.radio-option {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.875rem;
+		color: var(--text-primary);
+	}
+
+	.radio-option input[type='radio'] {
+		cursor: pointer;
+		width: 16px;
+		height: 16px;
 	}
 
 	.main {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { canvasStore } from '$lib/stores/canvas-store';
 	import { TOOLS } from '$lib/canvas-types';
 	import type { Tool } from '$lib/canvas-types';
@@ -7,6 +8,24 @@
 	let showStructure = $state(true);
 	let showSubtype = $state(false);
 	let showConstraint = $state(false);
+	let autoRotationEnabled = $state(true);
+
+	onMount(() => {
+		// Listen for auto-rotation state changes
+		const updateAutoRotation = () => {
+			autoRotationEnabled = (window as any).canvasAutoRotation ?? true;
+		};
+
+		window.addEventListener('toggleAutoRotation', updateAutoRotation);
+
+		// Initial sync
+		const interval = setInterval(updateAutoRotation, 100);
+
+		return () => {
+			window.removeEventListener('toggleAutoRotation', updateAutoRotation);
+			clearInterval(interval);
+		};
+	});
 
 	canvasStore.toolStore.subscribe((tool) => {
 		currentTool = tool;
@@ -32,7 +51,7 @@
 					onclick={() => selectTool(TOOLS.SELECT)}
 					title="Select"
 				>
-					<span class="icon">{TOOLS.SELECT.icon}</span>
+					<i class="fas {TOOLS.SELECT.icon}"></i>
 				</button>
 
 				<button
@@ -195,6 +214,17 @@
 	<div class="tool-group">
 		<button
 			class="tool-btn"
+			class:active={autoRotationEnabled}
+			onclick={() => {
+				window.dispatchEvent(new CustomEvent('toggleAutoRotation'));
+			}}
+			title="Toggle Shape Snapping (R)"
+		>
+			<i class="fas fa-sync-alt"></i>
+		</button>
+
+		<button
+			class="tool-btn"
 			onclick={() => canvasStore.undo()}
 			disabled={!canvasStore.canUndo()}
 			title="Undo (Ctrl+Z)"
@@ -277,6 +307,13 @@
 	.icon {
 		font-size: 1.5rem;
 		line-height: 1;
+	}
+
+	.tool-btn i {
+		font-size: 1.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 	}
 
 	.category-toggle {

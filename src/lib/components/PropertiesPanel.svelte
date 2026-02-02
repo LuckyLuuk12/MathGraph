@@ -214,6 +214,30 @@
 							oninput={updateNodeArity}
 						/>
 					</div>
+					<div class="property">
+						<label for="node-rotation">Rotation</label>
+						<select
+							id="node-rotation"
+							value={selectedNode.rotation || 0}
+							onchange={(e) => {
+								if (selectedNode && selectedNode.type === 'factType') {
+									const rotation = parseInt((e.target as HTMLSelectElement).value);
+									canvasStore.updateNode(selectedNode.id, { rotation });
+									// Trigger position update
+									window.dispatchEvent(
+										new CustomEvent('updateFactTypeRotation', {
+											detail: { nodeId: selectedNode.id }
+										})
+									);
+								}
+							}}
+						>
+							<option value="0">Horizontal (0°)</option>
+							<option value="90">Vertical (90°)</option>
+							<option value="180">Horizontal (180°)</option>
+							<option value="270">Vertical (270°)</option>
+						</select>
+					</div>
 				{/if}
 
 				<div class="property">

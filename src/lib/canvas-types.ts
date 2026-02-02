@@ -84,6 +84,9 @@ export interface CanvasNode {
   // For label types (data type specification)
   dataType?: LabelDataType;
 
+  // Rotation angle in degrees (0, 90, 180, 270)
+  rotation?: number;
+
   // Reference to schema object
   schemaObjectId: string;
 }
@@ -182,7 +185,7 @@ export interface Tool {
 
 export const TOOLS = {
   // Selection and navigation
-  SELECT: { id: 'select', name: 'Select', icon: '↖', cursor: 'default', category: 'structure' },
+  SELECT: { id: 'select', name: 'Select', icon: 'fa-mouse-pointer', cursor: 'default', category: 'structure' },
   PAN: { id: 'pan', name: 'Pan', icon: '✋', cursor: 'grab', category: 'structure' },
 
   // Structural types

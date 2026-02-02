@@ -21,7 +21,15 @@
 	let panStart: Point = { x: 0, y: 0 };
 	let hoveredEdgeHandle: { edgeId: string; end: 'source' | 'target' } | null = null;
 
-	let currentTool: Tool = TOOLS.SELECT;
+	let currentTool = $state<Tool>(TOOLS.SELECT);
+	let autoRotationEnabled = $state(true); // Shape snapping enabled by default
+
+	// Expose state globally for toolbar
+	$effect(() => {
+		if (typeof window !== 'undefined') {
+			(window as any).canvasAutoRotation = autoRotationEnabled;
+		}
+	});
 
 	canvasStore.toolStore.subscribe((tool) => {
 		currentTool = tool;
@@ -39,13 +47,44 @@
 		updateCanvasSize();
 		window.addEventListener('resize', updateCanvasSize);
 
+		// Listen for auto-rotation toggle
+		window.addEventListener('toggleAutoRotation', handleToggleAutoRotation);
+
+		// Listen for manual rotation updates from properties panel
+		window.addEventListener('updateFactTypeRotation', handleManualRotation);
+
 		// Start render loop
 		requestAnimationFrame(render);
 
 		return () => {
 			window.removeEventListener('resize', updateCanvasSize);
+			window.removeEventListener('toggleAutoRotation', handleToggleAutoRotation);
+			window.removeEventListener('updateFactTypeRotation', handleManualRotation);
 		};
 	});
+
+	function handleToggleAutoRotation() {
+		autoRotationEnabled = !autoRotationEnabled;
+		// Re-apply rotation to all fact types when enabled
+		if (autoRotationEnabled) {
+			for (const [nodeId, node] of $canvasStore.nodes) {
+				if (node.type === 'factType') {
+					applyAutoRotation(nodeId);
+				}
+			}
+		}
+	}
+
+	function handleManualRotation(e: Event) {
+		const customEvent = e as CustomEvent;
+		const nodeId = customEvent.detail?.nodeId;
+		if (nodeId) {
+			const node = $canvasStore.nodes.get(nodeId);
+			if (node && node.type === 'factType') {
+				updateSquarePositionsForRotation(node);
+			}
+		}
+	}
 
 	function updateCanvasSize() {
 		if (containerElement) {
@@ -100,6 +139,103 @@
 		ctx.restore();
 
 		requestAnimationFrame(render);
+	}
+
+	function updateSquarePositionsForRotation(node: CanvasNode) {
+		if (!node.squares || !node.arity) return;
+
+		const squareSize = 40;
+		const spacing = 0;
+		const rotation = node.rotation || 0;
+		const isVertical = rotation === 90 || rotation === 270;
+
+		for (let i = 0; i < node.arity; i++) {
+			if (isVertical) {
+				node.squares[i].position = {
+					x: node.position.x,
+					y: node.position.y + i * (squareSize + spacing)
+				};
+			} else {
+				node.squares[i].position = {
+					x: node.position.x + i * (squareSize + spacing),
+					y: node.position.y
+				};
+			}
+		}
+
+		// Update node size based on rotation
+		if (isVertical) {
+			node.size = { width: squareSize, height: squareSize * node.arity };
+		} else {
+			node.size = { width: squareSize * node.arity, height: squareSize };
+		}
+	}
+
+	function determineOptimalRotation(nodeId: string): number {
+		if (!autoRotationEnabled) return 0;
+
+		const node = $canvasStore.nodes.get(nodeId);
+		if (!node || node.type !== 'factType' || !node.arity || node.arity <= 1) return 0;
+
+		// Get all edges connected to this node
+		const connectedEdges = Array.from($canvasStore.edges.values()).filter(
+			(edge) => edge.sourceNodeId === nodeId || edge.targetNodeId === nodeId
+		);
+
+		if (connectedEdges.length === 0) return 0;
+
+		// Calculate total line length for both orientations
+		function calculateTotalLineLength(rotation: number): number {
+			let totalLength = 0;
+
+			// Temporarily set rotation to calculate connection points
+			const originalRotation = node!.rotation;
+			node!.rotation = rotation;
+			updateSquarePositionsForRotation(node!);
+
+			for (const edge of connectedEdges) {
+				const otherNodeId = edge.sourceNodeId === nodeId ? edge.targetNodeId : edge.sourceNodeId;
+				const otherNode = $canvasStore.nodes.get(otherNodeId);
+				if (!otherNode) continue;
+
+				const isSource = edge.sourceNodeId === nodeId;
+				const nodeSquareId = isSource ? edge.sourceSquareId : edge.targetSquareId;
+				const otherSquareId = isSource ? edge.targetSquareId : edge.sourceSquareId;
+
+				const nodePoint = getConnectionPoint(node!, nodeSquareId);
+				const otherPoint = getConnectionPoint(otherNode, otherSquareId);
+
+				const dx = otherPoint.x - nodePoint.x;
+				const dy = otherPoint.y - nodePoint.y;
+				totalLength += Math.sqrt(dx * dx + dy * dy);
+			}
+
+			// Restore original rotation
+			node!.rotation = originalRotation;
+			updateSquarePositionsForRotation(node!);
+
+			return totalLength;
+		}
+
+		// Compare horizontal (0°) vs vertical (90°)
+		const horizontalLength = calculateTotalLineLength(0);
+		const verticalLength = calculateTotalLineLength(90);
+
+		// Return the orientation with shorter total line length
+		return verticalLength < horizontalLength ? 90 : 0;
+	}
+
+	function applyAutoRotation(nodeId: string) {
+		if (!autoRotationEnabled) return;
+
+		const node = $canvasStore.nodes.get(nodeId);
+		if (!node || node.type !== 'factType') return;
+
+		const optimalRotation = determineOptimalRotation(nodeId);
+		if (node.rotation !== optimalRotation) {
+			node.rotation = optimalRotation;
+			updateSquarePositionsForRotation(node);
+		}
 	}
 
 	function drawGrid() {
@@ -165,17 +301,8 @@
 			drawDiamond(node);
 		}
 
-		// Draw label
-		const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-		ctx.fillStyle = isDark ? '#e5e7eb' : '#1f2937';
-		ctx.font = '14px sans-serif';
-		ctx.textAlign = 'center';
-		ctx.textBaseline = 'middle';
-		ctx.fillText(
-			node.label,
-			node.position.x + node.size.width / 2,
-			node.position.y + node.size.height + 20
-		);
+		// Draw label with background
+		drawNodeLabel(node);
 
 		ctx.restore();
 	}
@@ -217,10 +344,22 @@
 
 		const squareSize = 40;
 		const spacing = 0;
+		const rotation = node.rotation || 0;
+
+		// Determine if we're horizontal (0, 180) or vertical (90, 270)
+		const isVertical = rotation === 90 || rotation === 270;
 
 		for (let i = 0; i < node.arity; i++) {
-			const x = node.position.x + i * (squareSize + spacing);
-			const y = node.position.y;
+			let x, y;
+			if (isVertical) {
+				// Vertical arrangement
+				x = node.position.x;
+				y = node.position.y + i * (squareSize + spacing);
+			} else {
+				// Horizontal arrangement (default)
+				x = node.position.x + i * (squareSize + spacing);
+				y = node.position.y;
+			}
 
 			ctx.fillRect(x, y, squareSize, squareSize);
 			ctx.strokeRect(x, y, squareSize, squareSize);
@@ -286,6 +425,57 @@
 			// If no fact type yet, just draw a circle like entity
 			drawCircle(node);
 		}
+	}
+
+	function drawNodeLabel(node: CanvasNode) {
+		const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		const bgColor = isDark ? 'rgba(31, 41, 55, 0.9)' : 'rgba(255, 255, 255, 0.9)';
+		const textColor = isDark ? '#e5e7eb' : '#1f2937';
+
+		ctx.font = '14px sans-serif';
+		const metrics = ctx.measureText(node.label);
+		const textWidth = metrics.width;
+		const padding = 4;
+		const bgHeight = 18;
+
+		let labelX = node.position.x + node.size.width / 2;
+		let labelY;
+
+		// Position label based on node type
+		if (node.type === 'objectified') {
+			// Position label above the objectification circle
+			const factNode = node.objectifiedFactId
+				? $canvasStore.nodes.get(node.objectifiedFactId)
+				: null;
+			if (factNode) {
+				const centerY = factNode.position.y + factNode.size.height / 2;
+				const radius = Math.max(factNode.size.width, factNode.size.height) / 2 + 20;
+				labelY = centerY - radius - 15;
+			} else {
+				labelY = node.position.y - 15;
+			}
+		} else if (node.type === 'factType') {
+			// Position label closer to fact type squares (reduced from +20 to +8)
+			labelY = node.position.y + node.size.height + 8;
+		} else {
+			// Default position below the node
+			labelY = node.position.y + node.size.height + 20;
+		}
+
+		// Draw semi-transparent background
+		ctx.fillStyle = bgColor;
+		ctx.fillRect(
+			labelX - textWidth / 2 - padding,
+			labelY - bgHeight / 2,
+			textWidth + padding * 2,
+			bgHeight
+		);
+
+		// Draw text
+		ctx.fillStyle = textColor;
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
+		ctx.fillText(node.label, labelX, labelY);
 	}
 
 	function drawEdge(edge: typeof $canvasStore.edges extends Map<string, infer T> ? T : never) {
@@ -399,6 +589,11 @@
 	}
 
 	function getConnectionPoint(node: CanvasNode, squareId?: string, otherPoint?: Point): Point {
+		// Ensure square positions are up to date for rotated fact types
+		if (node.type === 'factType' && node.squares && node.rotation !== undefined) {
+			updateSquarePositionsForRotation(node);
+		}
+
 		// If connecting to a specific square in n-ary fact type
 		if (squareId && node.squares) {
 			const square = node.squares.find((s) => s.id === squareId);
@@ -439,11 +634,132 @@
 			}
 		}
 
+		// Calculate center point
+		const centerX = node.position.x + node.size.width / 2;
+		const centerY = node.position.y + node.size.height / 2;
+
+		// If we have another point to connect to, snap to perimeter
+		if (otherPoint) {
+			// For sequence types, snap to outer rectangle perimeter
+			if (node.type === 'sequenceType') {
+				const rectPadding = 10;
+				const outerLeft = node.position.x - rectPadding;
+				const outerTop = node.position.y - rectPadding;
+				const outerRight = node.position.x + node.size.width + rectPadding;
+				const outerBottom = node.position.y + node.size.height + rectPadding;
+				const outerCenterX = (outerLeft + outerRight) / 2;
+				const outerCenterY = (outerTop + outerBottom) / 2;
+
+				const dx = otherPoint.x - outerCenterX;
+				const dy = otherPoint.y - outerCenterY;
+				const angle = Math.atan2(dy, dx);
+				const absAngle = Math.abs(angle);
+
+				if (absAngle < Math.PI / 4) {
+					// Right side
+					return { x: outerRight, y: outerCenterY };
+				} else if (absAngle > (3 * Math.PI) / 4) {
+					// Left side
+					return { x: outerLeft, y: outerCenterY };
+				} else if (angle > 0) {
+					// Bottom side
+					return { x: outerCenterX, y: outerBottom };
+				} else {
+					// Top side
+					return { x: outerCenterX, y: outerTop };
+				}
+			}
+			// For circular shapes (entity, power type, objectified), snap to circle perimeter
+			else if (
+				node.shape === 'circle' ||
+				node.type === 'entity' ||
+				node.type === 'powerType' ||
+				node.type === 'objectified'
+			) {
+				// For objectified types, use the fact type's circle if available
+				if (node.type === 'objectified' && node.objectifiedFactId) {
+					const factNode = $canvasStore.nodes.get(node.objectifiedFactId);
+					if (factNode) {
+						const factCenterX = factNode.position.x + factNode.size.width / 2;
+						const factCenterY = factNode.position.y + factNode.size.height / 2;
+						const radius = Math.max(factNode.size.width, factNode.size.height) / 2 + 20;
+
+						const angle = Math.atan2(otherPoint.y - factCenterY, otherPoint.x - factCenterX);
+						return {
+							x: factCenterX + radius * Math.cos(angle),
+							y: factCenterY + radius * Math.sin(angle)
+						};
+					}
+				}
+
+				// Regular circle perimeter snap
+				const radius = Math.min(node.size.width, node.size.height) / 2;
+				const angle = Math.atan2(otherPoint.y - centerY, otherPoint.x - centerX);
+
+				return {
+					x: centerX + radius * Math.cos(angle),
+					y: centerY + radius * Math.sin(angle)
+				};
+			}
+			// For diamond shapes, snap to diamond perimeter
+			else if (node.shape === 'diamond') {
+				const halfWidth = node.size.width / 2;
+				const halfHeight = node.size.height / 2;
+
+				const dx = otherPoint.x - centerX;
+				const dy = otherPoint.y - centerY;
+
+				// Calculate which edge of the diamond to connect to
+				const angle = Math.atan2(dy, dx);
+				const absAngle = Math.abs(angle);
+
+				if (absAngle < Math.PI / 4) {
+					// Right edge
+					const t = halfWidth / Math.abs(dx);
+					return { x: centerX + halfWidth, y: centerY + dy * t };
+				} else if (absAngle > (3 * Math.PI) / 4) {
+					// Left edge
+					const t = halfWidth / Math.abs(dx);
+					return { x: centerX - halfWidth, y: centerY + dy * t };
+				} else if (angle > 0) {
+					// Bottom edge
+					const t = halfHeight / Math.abs(dy);
+					return { x: centerX + dx * t, y: centerY + halfHeight };
+				} else {
+					// Top edge
+					const t = halfHeight / Math.abs(dy);
+					return { x: centerX + dx * t, y: centerY - halfHeight };
+				}
+			}
+			// For square/rectangle shapes, snap to rectangle perimeter
+			else if (node.shape === 'square') {
+				const halfWidth = node.size.width / 2;
+				const halfHeight = node.size.height / 2;
+
+				const dx = otherPoint.x - centerX;
+				const dy = otherPoint.y - centerY;
+
+				const angle = Math.atan2(dy, dx);
+				const absAngle = Math.abs(angle);
+
+				if (absAngle < Math.PI / 4) {
+					// Right side
+					return { x: node.position.x + node.size.width, y: centerY };
+				} else if (absAngle > (3 * Math.PI) / 4) {
+					// Left side
+					return { x: node.position.x, y: centerY };
+				} else if (angle > 0) {
+					// Bottom side
+					return { x: centerX, y: node.position.y + node.size.height };
+				} else {
+					// Top side
+					return { x: centerX, y: node.position.y };
+				}
+			}
+		}
+
 		// Default: center of node
-		return {
-			x: node.position.x + node.size.width / 2,
-			y: node.position.y + node.size.height / 2
-		};
+		return { x: centerX, y: centerY };
 	}
 
 	function drawTempEdge(startNodeId: string, end: Point) {
@@ -515,8 +831,11 @@
 
 	function screenToCanvas(clientX: number, clientY: number): Point {
 		const rect = canvasElement.getBoundingClientRect();
-		const x = (clientX - rect.left - $canvasStore.pan.x) / $canvasStore.zoom;
-		const y = (clientY - rect.top - $canvasStore.pan.y) / $canvasStore.zoom;
+		// First subtract the screen offset, then undo pan, then undo zoom
+		const screenX = clientX - rect.left;
+		const screenY = clientY - rect.top;
+		const x = (screenX - $canvasStore.pan.x) / $canvasStore.zoom;
+		const y = (screenY - $canvasStore.pan.y) / $canvasStore.zoom;
 		return { x, y };
 	}
 
@@ -830,9 +1149,47 @@
 				if (node) {
 					const squareId = getClosestSquare(node, point);
 					canvasStore.finishReconnectingEdge(nodeId, squareId);
+					// Re-apply rotation after reconnection
+					if (node.type === 'factType') {
+						setTimeout(() => applyAutoRotation(nodeId), 0);
+					}
 				}
 			} else {
 				canvasStore.cancelReconnectingEdge();
+			}
+		}
+
+		// Handle edge creation completion
+		if ($canvasStore.isDrawingEdge) {
+			const nodeId = getNodeAtPoint(point);
+			if (nodeId) {
+				const node = $canvasStore.nodes.get(nodeId);
+				if (node && $canvasStore.drawingEdgeStart) {
+					const startNodeId = $canvasStore.drawingEdgeStart.nodeId;
+					// After edge is created, apply auto-rotation to both nodes
+					setTimeout(() => {
+						applyAutoRotation(nodeId);
+						applyAutoRotation(startNodeId);
+					}, 0);
+				}
+			}
+		}
+
+		// Re-apply rotation to connected fact types after dragging
+		if (isDragging && draggedNodeId) {
+			// Find all edges connected to the dragged node
+			const connectedEdges = Array.from($canvasStore.edges.values()).filter(
+				(edge) => edge.sourceNodeId === draggedNodeId || edge.targetNodeId === draggedNodeId
+			);
+
+			// Apply auto-rotation to any connected fact types
+			for (const edge of connectedEdges) {
+				const otherNodeId =
+					edge.sourceNodeId === draggedNodeId ? edge.targetNodeId : edge.sourceNodeId;
+				const otherNode = $canvasStore.nodes.get(otherNodeId);
+				if (otherNode && otherNode.type === 'factType') {
+					setTimeout(() => applyAutoRotation(otherNodeId), 0);
+				}
 			}
 		}
 
@@ -881,6 +1238,7 @@
 			isSelected: false,
 			isDragging: false,
 			schemaObjectId: '',
+			rotation: 0,
 			arity: type === 'factType' ? 2 : undefined,
 			squares:
 				type === 'factType'
@@ -938,6 +1296,18 @@
 				return;
 			} else if (e.key.toLowerCase() === 'p') {
 				canvasStore.setTool(TOOLS.PREDICATOR);
+				return;
+			} else if (e.key.toLowerCase() === 'r') {
+				// Toggle auto-rotation with 'R' key
+				autoRotationEnabled = !autoRotationEnabled;
+				// Re-apply rotation to all fact types
+				if (autoRotationEnabled) {
+					for (const [nodeId, node] of $canvasStore.nodes) {
+						if (node.type === 'factType') {
+							applyAutoRotation(nodeId);
+						}
+					}
+				}
 				return;
 			}
 		}

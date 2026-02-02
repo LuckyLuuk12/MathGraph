@@ -88,13 +88,13 @@
 			<h1>🔷 {projectName}</h1>
 		</div>
 		<button class="export-btn" onclick={() => goto(`/modeler/${projectId}/export`)}>
-			🗄️ Export SQL
+			<i class="fas fa-file-export"></i> Export
 		</button>
 		<div class="stats">
 			<span>Nodes: {$canvasStore.nodes.size}</span>
 			<span>Edges: {$canvasStore.edges.size}</span>
 			<span>Zoom: {Math.round($canvasStore.zoom * 100)}%</span>
-			<span class="auto-save">💾 Auto-saving...</span>
+			<span class="auto-save"><i class="fas fa-save"></i> Auto-saving...</span>
 		</div>
 	</div>
 
