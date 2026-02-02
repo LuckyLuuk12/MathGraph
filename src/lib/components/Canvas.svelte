@@ -26,6 +26,11 @@
 	let panStart: Point = { x: 0, y: 0 };
 	let hoveredEdgeHandle: { edgeId: string; end: 'source' | 'target' } | null = null;
 
+	// Selection rectangle for wrapping custom sets
+	let isDrawingSelectionRect = false;
+	let selectionRectStart: Point | null = null;
+	let selectionRectEnd: Point | null = null;
+
 	let currentTool = $state<Tool>(TOOLS.SELECT);
 	let autoRotationEnabled = $state(true); // Shape snapping enabled by default
 
@@ -139,6 +144,20 @@
 		// Draw nodes
 		for (const node of state.nodes.values()) {
 			drawNode(node);
+		}
+
+		// Draw selection rectangle for wrapping
+		if (isDrawingSelectionRect && selectionRectStart && selectionRectEnd) {
+			ctx.strokeStyle = '#3b82f6';
+			ctx.lineWidth = 2;
+			ctx.setLineDash([5, 5]);
+			ctx.strokeRect(
+				Math.min(selectionRectStart.x, selectionRectEnd.x),
+				Math.min(selectionRectStart.y, selectionRectEnd.y),
+				Math.abs(selectionRectEnd.x - selectionRectStart.x),
+				Math.abs(selectionRectEnd.y - selectionRectStart.y)
+			);
+			ctx.setLineDash([]);
 		}
 
 		ctx.restore();
@@ -283,16 +302,56 @@
 
 		ctx.fillStyle = node.color;
 
-		if (node.type === 'custom' && node.shape === 'custom' && node.customShapePoints) {
-			// Draw custom shape
-			drawCustomShape(
-				ctx,
-				node.customShapePoints,
-				node.position.x,
-				node.position.y,
-				node.size.width,
-				node.size.height
-			);
+		if (node.type === 'custom') {
+			// For wrapping custom sets, draw with semi-transparent fill
+			if (node.wrappedNodeIds && node.wrappedNodeIds.length > 0) {
+				ctx.fillStyle = node.color; // Already semi-transparent
+				ctx.strokeStyle = '#8b5cf6'; // Solid purple border
+				ctx.lineWidth = 3;
+
+				if (node.shape === 'custom' && node.customShapePoints) {
+					drawCustomShape(
+						ctx,
+						node.customShapePoints,
+						node.position.x,
+						node.position.y,
+						node.size.width,
+						node.size.height
+					);
+				} else {
+					// Default to rounded rectangle for wrapping
+					const radius = 10;
+					ctx.beginPath();
+					ctx.roundRect(
+						node.position.x,
+						node.position.y,
+						node.size.width,
+						node.size.height,
+						radius
+					);
+					ctx.fill();
+					ctx.stroke();
+				}
+			} else if (node.shape === 'custom' && node.customShapePoints) {
+				// Standalone custom shape
+				drawCustomShape(
+					ctx,
+					node.customShapePoints,
+					node.position.x,
+					node.position.y,
+					node.size.width,
+					node.size.height
+				);
+			} else if (node.shape === 'circle') {
+				drawCircle(node);
+			} else if (node.shape === 'square') {
+				drawSquare(node);
+			} else if (node.shape === 'diamond') {
+				drawDiamond(node);
+			} else {
+				// Default rectangle
+				drawSquare(node);
+			}
 		} else if (node.type === 'factType' && node.arity && node.arity > 1) {
 			// Draw n-ary fact type (grid of squares)
 			drawNaryFactType(node);
@@ -1150,8 +1209,18 @@
 			} else if ((currentTool as any).nodeType === 'custom') {
 				// Custom set creation
 				if (!nodeId) {
-					const snappedPoint = snapToGrid(point);
-					createCustomNode(currentTool, snappedPoint);
+					const customTool = currentTool as any;
+					// Check if this is a wrapping custom set
+					if (customTool.usageRule && customTool.usageRule.startsWith('wraps-')) {
+						// Start selection rectangle for wrapping
+						isDrawingSelectionRect = true;
+						selectionRectStart = point;
+						selectionRectEnd = point;
+					} else {
+						// Standalone custom set - create immediately
+						const snappedPoint = snapToGrid(point);
+						createCustomNode(currentTool, snappedPoint);
+					}
 				}
 			} else {
 				// Default: pan on right-click
@@ -1167,7 +1236,10 @@
 		// Update hover state for edge handles
 		hoveredEdgeHandle = getEdgeHandleAtPoint(point);
 
-		if (isDragging && draggedNodeId) {
+		if (isDrawingSelectionRect && selectionRectStart) {
+			// Update selection rectangle
+			selectionRectEnd = point;
+		} else if (isDragging && draggedNodeId) {
 			const rawPosition = {
 				x: point.x - dragOffset.x,
 				y: point.y - dragOffset.y
@@ -1189,6 +1261,46 @@
 
 	function handleMouseUp(e: MouseEvent) {
 		const point = screenToCanvas(e.clientX, e.clientY);
+
+		// Handle wrapping selection rectangle completion
+		if (isDrawingSelectionRect && selectionRectStart && selectionRectEnd) {
+			const customTool = currentTool as any;
+			const nodesInRect = getNodesInRectangle(
+				selectionRectStart,
+				selectionRectEnd,
+				customTool.usageRule
+			);
+
+			if (nodesInRect.length > 0) {
+				// Create custom node that wraps these nodes
+				createWrappingCustomNode(currentTool, nodesInRect);
+			}
+
+			isDrawingSelectionRect = false;
+			selectionRectStart = null;
+			selectionRectEnd = null;
+			return;
+		}
+
+		// Handle wrapping selection rectangle completion
+		if (isDrawingSelectionRect && selectionRectStart && selectionRectEnd) {
+			const customTool = currentTool as any;
+			const nodesInRect = getNodesInRectangle(
+				selectionRectStart,
+				selectionRectEnd,
+				customTool.usageRule
+			);
+
+			if (nodesInRect.length > 0) {
+				// Create custom node that wraps these nodes
+				createWrappingCustomNode(currentTool, nodesInRect);
+			}
+
+			isDrawingSelectionRect = false;
+			selectionRectStart = null;
+			selectionRectEnd = null;
+			return;
+		}
 
 		// Handle edge reconnection
 		if ($canvasStore.isReconnectingEdge) {
@@ -1318,6 +1430,79 @@
 			customSetName: customTool.name,
 			usageRule: customTool.usageRule,
 			wrappedNodeIds: []
+		};
+
+		canvasStore.addNode(node);
+	}
+
+	function getNodesInRectangle(start: Point, end: Point, usageRule: string): string[] {
+		const minX = Math.min(start.x, end.x);
+		const maxX = Math.max(start.x, end.x);
+		const minY = Math.min(start.y, end.y);
+		const maxY = Math.max(start.y, end.y);
+
+		const nodesInRect: string[] = [];
+
+		for (const [id, node] of $canvasStore.nodes) {
+			// Skip custom nodes themselves
+			if (node.type === 'custom') continue;
+
+			// Filter based on usage rule
+			if (usageRule === 'wraps-single-entity' || usageRule === 'wraps-multiple-entities') {
+				if (node.type !== 'entity' && node.type !== 'powerType') continue;
+			}
+
+			// Check if node center is in rectangle
+			const centerX = node.position.x + node.size.width / 2;
+			const centerY = node.position.y + node.size.height / 2;
+
+			if (centerX >= minX && centerX <= maxX && centerY >= minY && centerY <= maxY) {
+				nodesInRect.push(id);
+			}
+		}
+
+		return nodesInRect;
+	}
+
+	function createWrappingCustomNode(tool: Tool, wrappedNodeIds: string[]) {
+		const customTool = tool as any;
+
+		// Calculate bounding box of wrapped nodes
+		let minX = Infinity,
+			minY = Infinity,
+			maxX = -Infinity,
+			maxY = -Infinity;
+
+		for (const nodeId of wrappedNodeIds) {
+			const node = $canvasStore.nodes.get(nodeId);
+			if (!node) continue;
+
+			minX = Math.min(minX, node.position.x);
+			minY = Math.min(minY, node.position.y);
+			maxX = Math.max(maxX, node.position.x + node.size.width);
+			maxY = Math.max(maxY, node.position.y + node.size.height);
+		}
+
+		// Add padding around wrapped nodes
+		const padding = 20;
+		const position = { x: minX - padding, y: minY - padding };
+		const size = { width: maxX - minX + padding * 2, height: maxY - minY + padding * 2 };
+
+		const node: CanvasNode = {
+			id: crypto.randomUUID(),
+			type: 'custom',
+			shape: customTool.shape || 'rectangle',
+			position,
+			size,
+			label: customTool.icon || customTool.name,
+			color: 'rgba(167, 139, 250, 0.2)', // Semi-transparent purple
+			isSelected: false,
+			isDragging: false,
+			schemaObjectId: '',
+			customShapePoints: customTool.customShape,
+			customSetName: customTool.name,
+			usageRule: customTool.usageRule,
+			wrappedNodeIds: wrappedNodeIds
 		};
 
 		canvasStore.addNode(node);

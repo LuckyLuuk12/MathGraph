@@ -285,15 +285,47 @@
 							{/if}
 						</div>
 					</div>
-					{#if selectedNode.wrappedNodeIds && selectedNode.wrappedNodeIds.length > 0}
+					{#if selectedNode.usageRule && selectedNode.usageRule.startsWith('wraps-')}
 						<div class="property">
-							<!-- svelte-ignore a11y_label_has_associated_control -->
-							<label>Wrapped Elements</label>
-							<ul>
-								{#each selectedNode.wrappedNodeIds as wrappedId}
-									<li>{$canvasStore.nodes.get(wrappedId)?.label || 'Unknown'}</li>
-								{/each}
-							</ul>
+							<label for="wrapped-elements"
+								>Wrapped Elements ({selectedNode.wrappedNodeIds?.length || 0})</label
+							>
+							{#if selectedNode.wrappedNodeIds && selectedNode.wrappedNodeIds.length > 0}
+								<div class="wrapped-elements-list">
+									{#each selectedNode.wrappedNodeIds as wrappedId}
+										{@const wrappedNode = $canvasStore.nodes.get(wrappedId)}
+										{#if wrappedNode}
+											<div class="wrapped-element">
+												<span class="element-label">{wrappedNode.label}</span>
+												<button
+													class="remove-btn"
+													onclick={() => {
+														if (selectedNode && selectedNode.wrappedNodeIds) {
+															const newWrappedIds = selectedNode.wrappedNodeIds.filter(
+																(id) => id !== wrappedId
+															);
+															canvasStore.updateNode(selectedNode.id, {
+																wrappedNodeIds: newWrappedIds,
+																// Recalculate size if no wrapped nodes left
+																...(newWrappedIds.length === 0
+																	? { size: { width: 80, height: 80 } }
+																	: {})
+															});
+														}
+													}}
+													title="Remove from {selectedNode.customSetName}"
+												>
+													<i class="fas fa-times"></i>
+												</button>
+											</div>
+										{/if}
+									{/each}
+								</div>
+							{:else}
+								<div class="value empty-state">
+									No elements in set. Right-click and drag to select elements.
+								</div>
+							{/if}
 						</div>
 					{/if}
 				{/if}
@@ -786,5 +818,56 @@
 		color: var(--text-secondary);
 		margin-bottom: 0.25rem;
 		line-height: 1.4;
+	}
+
+	.wrapped-elements-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-top: 0.5rem;
+	}
+
+	.wrapped-element {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.5rem;
+		background: var(--hover-bg);
+		border-radius: 0.25rem;
+		border: 1px solid var(--border-color);
+	}
+
+	.element-label {
+		font-size: 0.875rem;
+		color: var(--text-primary);
+		font-weight: 500;
+	}
+
+	.remove-btn {
+		background: transparent;
+		border: none;
+		color: #ef4444;
+		cursor: pointer;
+		padding: 0.25rem 0.5rem;
+		border-radius: 0.25rem;
+		transition: all 0.2s;
+		font-size: 0.875rem;
+	}
+
+	.remove-btn:hover {
+		background: rgba(239, 68, 68, 0.1);
+		color: #dc2626;
+	}
+
+	.remove-btn:active {
+		transform: scale(0.95);
+	}
+
+	.empty-state {
+		color: var(--text-secondary);
+		font-style: italic;
+		font-size: 0.875rem;
+		padding: 0.75rem;
+		text-align: center;
 	}
 </style>
