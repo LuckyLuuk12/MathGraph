@@ -3,7 +3,6 @@
 	import Toolbar from '$lib/components/Toolbar.svelte';
 	import HelpToggle from '$lib/components/HelpToggle.svelte';
 	import PropertiesPanel from '$lib/components/PropertiesPanel.svelte';
-	import DetailPanel from '$lib/components/DetailPanel.svelte';
 	import { canvasStore } from '$lib/stores/canvas-store';
 </script>
 
@@ -30,7 +29,6 @@
 	</div>
 
 	<HelpToggle />
-	<DetailPanel />
 </div>
 
 <style>

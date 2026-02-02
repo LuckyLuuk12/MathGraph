@@ -1257,13 +1257,11 @@
 		const nodeId = getNodeAtPoint(point);
 		const edgeId = !nodeId ? getEdgeAtPoint(point) : null;
 
-		if (nodeId || edgeId) {
-			// Dispatch custom event to open detail panel
-			window.dispatchEvent(
-				new CustomEvent('openDetailPanel', {
-					detail: { nodeId, edgeId }
-				})
-			);
+		// Select the item to open properties panel with all details
+		if (nodeId) {
+			canvasStore.selectNode(nodeId, false);
+		} else if (edgeId) {
+			canvasStore.selectEdge(edgeId, false);
 		}
 	}
 

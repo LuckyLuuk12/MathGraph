@@ -125,6 +125,21 @@
 		canvasStore.deleteSelected();
 		isOpen = false;
 	}
+
+	function getConnectedEdges(nodeId: string): { incoming: CanvasEdge[]; outgoing: CanvasEdge[] } {
+		const incoming: CanvasEdge[] = [];
+		const outgoing: CanvasEdge[] = [];
+
+		for (const edge of $canvasStore.edges.values()) {
+			if (edge.targetNodeId === nodeId) {
+				incoming.push(edge);
+			} else if (edge.sourceNodeId === nodeId) {
+				outgoing.push(edge);
+			}
+		}
+
+		return { incoming, outgoing };
+	}
 </script>
 
 {#if isOpen && (selectedNode || selectedEdge)}
@@ -144,6 +159,7 @@
 		</div>
 
 		{#if selectedNode}
+			{@const connections = getConnectedEdges(selectedNode.id)}
 			<div class="property-group">
 				<div class="header-with-toggle">
 					<h4>Node: {selectedNode.type}</h4>
@@ -241,12 +257,53 @@
 				{/if}
 
 				<div class="property">
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label>Shape</label>
+					<div class="value">{selectedNode.shape}</div>
+				</div>
+
+				<div class="property">
 					<h4>Position</h4>
 					<div class="coords">
 						<span>X: {Math.round(selectedNode.position.x)}</span>
 						<span>Y: {Math.round(selectedNode.position.y)}</span>
 					</div>
 				</div>
+
+				{#if connections.incoming.length > 0 || connections.outgoing.length > 0}
+					<div class="property">
+						<!-- svelte-ignore a11y_label_has_associated_control -->
+						<label>Connections</label>
+						<div class="connections">
+							{#if connections.incoming.length > 0}
+								<div class="connection-group">
+									<strong>Incoming ({connections.incoming.length}):</strong>
+									<ul>
+										{#each connections.incoming as edge}
+											<li>
+												{edge.label || 'Predicate'} from {$canvasStore.nodes.get(edge.sourceNodeId)
+													?.label || 'Unknown'}
+											</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
+							{#if connections.outgoing.length > 0}
+								<div class="connection-group">
+									<strong>Outgoing ({connections.outgoing.length}):</strong>
+									<ul>
+										{#each connections.outgoing as edge}
+											<li>
+												{edge.label || 'Predicate'} to {$canvasStore.nodes.get(edge.targetNodeId)
+													?.label || 'Unknown'}
+											</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
 			</div>
 		{:else if selectedEdge}
 			<div class="property-group">
@@ -289,6 +346,22 @@
 						value={selectedEdge.color}
 						oninput={updateEdgeColor}
 					/>
+				</div>
+
+				<div class="property">
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label>Source Node</label>
+					<div class="value">
+						{$canvasStore.nodes.get(selectedEdge.sourceNodeId)?.label || 'Unknown'}
+					</div>
+				</div>
+
+				<div class="property">
+					<!-- svelte-ignore a11y_label_has_associated_control -->
+					<label>Target Node</label>
+					<div class="value">
+						{$canvasStore.nodes.get(selectedEdge.targetNodeId)?.label || 'Unknown'}
+					</div>
 				</div>
 
 				<div class="property">
@@ -624,5 +697,52 @@
 		font-size: 0.8125rem;
 		line-height: 1.5;
 		color: var(--text-secondary);
+	}
+
+	.value {
+		padding: 0.5rem;
+		background: var(--bg-primary);
+		border-radius: 0.25rem;
+		color: var(--text-primary);
+		font-size: 0.875rem;
+		border: 1px solid var(--border-color);
+	}
+
+	.connections {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		background: var(--bg-primary);
+		border-radius: 0.25rem;
+		border: 1px solid var(--border-color);
+		max-height: 300px;
+		overflow-y: auto;
+	}
+
+	.connection-group {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.connection-group strong {
+		font-size: 0.75rem;
+		color: var(--text-primary);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.connection-group ul {
+		margin: 0;
+		padding-left: 1.25rem;
+		list-style-type: disc;
+	}
+
+	.connection-group li {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		margin-bottom: 0.25rem;
+		line-height: 1.4;
 	}
 </style>

@@ -29,20 +29,32 @@
 		<h3>Quick Help</h3>
 		<ul>
 			<li>
-				<strong>Left Click:</strong> Select/drag element. Shift+Click for multi-select.
+				<strong>Left Click:</strong> Select element and open properties panel. Drag to move. Shift+Click
+				for multi-select.
 			</li>
-			<li><strong>Double Click:</strong> Open detailed info panel for element.</li>
-			<li><strong>Right Click + Drag:</strong> Pan the canvas (always available).</li>
-			<li><strong>Entity <kbd>E</kbd>:</strong> Right-click to create entity type (circle).</li>
-			<li><strong>Fact Type <kbd>F</kbd>:</strong> Right-click to create fact type (squares).</li>
-			<li><strong>Label Type <kbd>L</kbd>:</strong> Right-click to create label type (diamond).</li>
-			<li><strong>Predicate <kbd>P</kbd>:</strong> Right-click source, then target to connect.</li>
+			<li>
+				<strong>Right Click:</strong> Create element (with tool selected) or pan canvas (default).
+			</li>
+			<li>
+				<strong>Entity <kbd>E</kbd>:</strong> Select tool, then right-click empty space to create.
+			</li>
+			<li>
+				<strong>Fact Type <kbd>F</kbd>:</strong> Select tool, then right-click empty space to create.
+			</li>
+			<li>
+				<strong>Label Type <kbd>L</kbd>:</strong> Select tool, then right-click empty space to create.
+			</li>
+			<li>
+				<strong>Predicate <kbd>P</kbd>:</strong> Select tool, then right-click source node, then target
+				node.
+			</li>
+			<li><strong>Rotate <kbd>R</kbd>:</strong> Toggle automatic fact type rotation on/off.</li>
 			<li><strong>Delete <kbd>Del</kbd>:</strong> Delete selected elements.</li>
 			<li><strong>Undo <kbd>Ctrl+Z</kbd>:</strong> Undo last action.</li>
 			<li><strong>Redo <kbd>Ctrl+Y</kbd>:</strong> Redo last undone action.</li>
 			<li><strong>Copy <kbd>Ctrl+C</kbd>:</strong> Copy selected elements.</li>
 			<li><strong>Paste <kbd>Ctrl+V</kbd>:</strong> Paste copied elements.</li>
-			<li><strong>Zoom:</strong> Scroll mouse wheel.</li>
+			<li><strong>Zoom:</strong> Scroll mouse wheel to zoom in/out.</li>
 			<li><strong>Escape <kbd>Esc</kbd>:</strong> Cancel operation or clear selection.</li>
 		</ul>
 	</div>
