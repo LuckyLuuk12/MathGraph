@@ -9,6 +9,11 @@
 	import { canvasStore } from '$lib/stores/canvas-store';
 	import { TOOLS } from '$lib/canvas-types';
 	import type { CanvasNode, Point, Tool } from '$lib/canvas-types';
+	import {
+		drawCustomShape,
+		isPointInCustomShape,
+		getCustomShapeConnectionPoint
+	} from '$lib/custom-theory-integration';
 
 	let canvasElement: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
@@ -278,7 +283,17 @@
 
 		ctx.fillStyle = node.color;
 
-		if (node.type === 'factType' && node.arity && node.arity > 1) {
+		if (node.type === 'custom' && node.shape === 'custom' && node.customShapePoints) {
+			// Draw custom shape
+			drawCustomShape(
+				ctx,
+				node.customShapePoints,
+				node.position.x,
+				node.position.y,
+				node.size.width,
+				node.size.height
+			);
+		} else if (node.type === 'factType' && node.arity && node.arity > 1) {
 			// Draw n-ary fact type (grid of squares)
 			drawNaryFactType(node);
 		} else if (node.type === 'powerType') {
@@ -640,6 +655,18 @@
 
 		// If we have another point to connect to, snap to perimeter
 		if (otherPoint) {
+			// Handle custom shapes with custom connection point algorithm
+			if (node.type === 'custom' && node.shape === 'custom' && node.customShapePoints) {
+				return getCustomShapeConnectionPoint(
+					node.customShapePoints,
+					node.position.x,
+					node.position.y,
+					node.size.width,
+					node.size.height,
+					otherPoint
+				);
+			}
+
 			// For sequence types, snap to outer rectangle perimeter
 			if (node.type === 'sequenceType') {
 				const rectPadding = 10;
@@ -875,7 +902,23 @@
 
 	function getNodeAtPoint(point: Point): string | null {
 		for (const [id, node] of $canvasStore.nodes) {
-			if (
+			// Handle custom shapes with point-in-polygon detection
+			if (node.type === 'custom' && node.shape === 'custom' && node.customShapePoints) {
+				if (
+					isPointInCustomShape(
+						point,
+						node.customShapePoints,
+						node.position.x,
+						node.position.y,
+						node.size.width,
+						node.size.height
+					)
+				) {
+					return id;
+				}
+			}
+			// Handle other node types with bounding box
+			else if (
 				point.x >= node.position.x &&
 				point.x <= node.position.x + node.size.width &&
 				point.y >= node.position.y &&
@@ -1104,6 +1147,12 @@
 						snappedPoint
 					);
 				}
+			} else if ((currentTool as any).nodeType === 'custom') {
+				// Custom set creation
+				if (!nodeId) {
+					const snappedPoint = snapToGrid(point);
+					createCustomNode(currentTool, snappedPoint);
+				}
 			} else {
 				// Default: pan on right-click
 				isPanning = true;
@@ -1247,6 +1296,28 @@
 							{ id: crypto.randomUUID(), position: { x: position.x + 40, y: position.y } }
 						]
 					: undefined
+		};
+
+		canvasStore.addNode(node);
+	}
+
+	function createCustomNode(tool: Tool, position: Point) {
+		const customTool = tool as any;
+		const node: CanvasNode = {
+			id: crypto.randomUUID(),
+			type: 'custom',
+			shape: customTool.shape || 'circle',
+			position,
+			size: { width: 80, height: 80 },
+			label: customTool.icon || customTool.name,
+			color: '#a78bfa', // Purple for custom sets
+			isSelected: false,
+			isDragging: false,
+			schemaObjectId: '',
+			customShapePoints: customTool.customShape,
+			customSetName: customTool.name,
+			usageRule: customTool.usageRule,
+			wrappedNodeIds: []
 		};
 
 		canvasStore.addNode(node);

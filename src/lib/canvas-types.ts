@@ -18,7 +18,8 @@ export type NodeType =
   | 'labelType'     // L: Label type (diamond)
   | 'objectified'   // Objectified fact (circle around fact type)
   | 'powerType'     // G: Power type (double circle)
-  | 'sequenceType'; // S: Sequence type (rectangle around entity)
+  | 'sequenceType'  // S: Sequence type (rectangle around entity)
+  | 'custom';       // Custom sets from theory page
 
 export type EdgeType =
   | 'predicator'      // P: Standard predicator line
@@ -63,7 +64,7 @@ export interface Size {
 export interface CanvasNode {
   id: string;
   type: NodeType;
-  shape: NodeShape;
+  shape: 'circle' | 'square' | 'rectangle' | 'diamond' | 'custom';
   position: Point;
   size: Size;
   label: string;
@@ -86,6 +87,12 @@ export interface CanvasNode {
 
   // Rotation angle in degrees (0, 90, 180, 270)
   rotation?: number;
+
+  // Custom set properties (for type === 'custom')
+  customShapePoints?: Point[]; // Points for custom drawn shapes
+  customSetName?: string; // Name of the custom set this represents
+  usageRule?: 'standalone' | 'wraps-single-object' | 'wraps-single-entity' | 'wraps-multiple-objects' | 'wraps-multiple-entities' | 'on-edge';
+  wrappedNodeIds?: string[]; // IDs of nodes wrapped by this custom set (for wraps-* usage rules)
 
   // Reference to schema object
   schemaObjectId: string;

@@ -19,7 +19,9 @@
 		sequenceType:
 			'A Sequence Type represents an ordered collection of entities (e.g., "Playlist" as a sequence of "Song"). The order matters, unlike regular sets. Shown as a rectangle around a circle.',
 		objectified:
-			'An Objectified Fact Type treats a relationship as an entity itself, allowing it to participate in other relationships (e.g., treating "Marriage" between two people as an entity that has a date). Shown as a circle around a fact type.'
+			'An Objectified Fact Type treats a relationship as an entity itself, allowing it to participate in other relationships (e.g., treating "Marriage" between two people as an entity that has a date). Shown as a circle around a fact type.',
+		custom:
+			'A Custom Set represents a user-defined concept from the theory page. It can be standalone or wrap around other objects depending on its usage rule.'
 	};
 
 	const edgeExplanations: Record<string, string> = {
@@ -254,6 +256,46 @@
 							<option value="270">Vertical (270°)</option>
 						</select>
 					</div>
+				{/if}
+
+				{#if selectedNode.type === 'custom'}
+					<div class="property">
+						<!-- svelte-ignore a11y_label_has_associated_control -->
+						<label>Custom Set Name</label>
+						<div class="value">{selectedNode.customSetName || 'Unknown'}</div>
+					</div>
+					<div class="property">
+						<!-- svelte-ignore a11y_label_has_associated_control -->
+						<label>Usage Rule</label>
+						<div class="value">
+							{#if selectedNode.usageRule === 'standalone'}
+								Standalone (like Entity/Fact Type)
+							{:else if selectedNode.usageRule === 'wraps-single-object'}
+								Wraps Single Object (like Objectification)
+							{:else if selectedNode.usageRule === 'wraps-single-entity'}
+								Wraps Single Entity (like Power Type)
+							{:else if selectedNode.usageRule === 'wraps-multiple-objects'}
+								Wraps Multiple Objects
+							{:else if selectedNode.usageRule === 'wraps-multiple-entities'}
+								Wraps Multiple Entities
+							{:else if selectedNode.usageRule === 'on-edge'}
+								On Edge (like Constraints)
+							{:else}
+								{selectedNode.usageRule}
+							{/if}
+						</div>
+					</div>
+					{#if selectedNode.wrappedNodeIds && selectedNode.wrappedNodeIds.length > 0}
+						<div class="property">
+							<!-- svelte-ignore a11y_label_has_associated_control -->
+							<label>Wrapped Elements</label>
+							<ul>
+								{#each selectedNode.wrappedNodeIds as wrappedId}
+									<li>{$canvasStore.nodes.get(wrappedId)?.label || 'Unknown'}</li>
+								{/each}
+							</ul>
+						</div>
+					{/if}
 				{/if}
 
 				<div class="property">

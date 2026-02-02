@@ -3,14 +3,34 @@
 	import { canvasStore } from '$lib/stores/canvas-store';
 	import { TOOLS } from '$lib/canvas-types';
 	import type { Tool } from '$lib/canvas-types';
+	import { getCustomSetTools } from '$lib/custom-theory-integration';
+	import type { UsageRule } from '$lib/theory-parser';
 
 	let currentTool = $state<Tool>(TOOLS.SELECT);
 	let showStructure = $state(true);
 	let showSubtype = $state(false);
 	let showConstraint = $state(false);
+	let showCustom = $state(false);
 	let autoRotationEnabled = $state(true);
+	let customSetTools = $state<
+		(Tool & {
+			usageRule: UsageRule;
+			description?: string;
+		})[]
+	>([]);
 
 	onMount(() => {
+		// Load custom sets
+		customSetTools = getCustomSetTools();
+
+		// Listen for changes to custom sets in localStorage
+		const handleStorageChange = (e: StorageEvent) => {
+			if (e.key === 'mathgraph_custom_sets') {
+				customSetTools = getCustomSetTools();
+			}
+		};
+		window.addEventListener('storage', handleStorageChange);
+
 		// Listen for auto-rotation state changes
 		const updateAutoRotation = () => {
 			autoRotationEnabled = (window as any).canvasAutoRotation ?? true;
@@ -22,6 +42,7 @@
 		const interval = setInterval(updateAutoRotation, 100);
 
 		return () => {
+			window.removeEventListener('storage', handleStorageChange);
 			window.removeEventListener('toggleAutoRotation', updateAutoRotation);
 			clearInterval(interval);
 		};
@@ -121,6 +142,32 @@
 	</div>
 
 	<div class="divider"></div>
+
+	<!-- Custom Sets -->
+	{#if customSetTools.length > 0}
+		<div class="tool-category">
+			<button class="category-toggle" onclick={() => (showCustom = !showCustom)}>
+				<i class={showCustom ? 'fas fa-chevron-down' : 'fas fa-chevron-right'}></i>
+				Custom Sets
+			</button>
+			{#if showCustom}
+				<div class="tool-group">
+					{#each customSetTools as tool}
+						<button
+							class="tool-btn"
+							class:active={currentTool.id === tool.id}
+							onclick={() => selectTool(tool)}
+							title={tool.description || tool.name}
+						>
+							<span class="icon">{tool.icon}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
+		<div class="divider"></div>
+	{/if}
 
 	<!-- Subtype Tools -->
 	<div class="tool-category">
