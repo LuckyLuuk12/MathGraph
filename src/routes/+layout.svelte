@@ -9,7 +9,7 @@
 	import TopBar from '$lib/components/TopBar.svelte';
 	import Window from '$lib/components/Window.svelte';
 
-	import { activeTool, isLoading } from '$lib/stores/app';
+	import { activeTool, initializeApp } from '$lib/stores/app';
 	import { theme } from '$lib/stores/theme.svelte';
 	import { onMount } from 'svelte';
 	/**
@@ -24,7 +24,7 @@
 
 	onMount(() => {
 		theme.init();
-		isLoading.set(false);
+		initializeApp();
 	});
 </script>
 

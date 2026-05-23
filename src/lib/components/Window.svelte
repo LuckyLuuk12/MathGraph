@@ -32,8 +32,9 @@
 <style>
 	.window {
 		flex: 1;
+		min-width: 0;
 		background: var(--bg-primary);
 		color: var(--text-primary);
-		overflow: auto;
+		overflow: hidden;
 	}
 </style>

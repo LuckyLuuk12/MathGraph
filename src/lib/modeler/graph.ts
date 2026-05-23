@@ -50,6 +50,10 @@ export interface VisualNode {
   position: Point; // Center of the whole shape
   dimensions: Dimension;
   connectionPoints: ConnectionPoint[]; // Points for the outer container
+  label?: string; // Optional label for display
+  fillColor?: string;
+  isObjectified?: boolean;
+  arity?: number;
   roles?: VisualRoleSquare[]; // Specific for FACT shapes
 }
 
